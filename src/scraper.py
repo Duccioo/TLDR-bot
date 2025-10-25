@@ -1,17 +1,15 @@
 """
-Modulo per la creazione e pubblicazione di articoli su Telegra.ph.
-Utilizza il modulo extractor per l'estrazione del contenuto.
+Modulo per l'orchestrazione dell'estrazione e del riassunto di articoli.
+Contiene anche una funzione per pubblicare su Telegra.ph.
 """
-
-# Assicurati di avere le librerie installate:
-# pip install trafilatura requests python-telegraph beautifulsoup4
 
 from typing import Optional
 from telegraph import Telegraph
 from telegraph.exceptions import TelegraphException
 
-# Import delle funzioni di estrazione
-from extractor import estrai_come_html, estrai_metadati
+# Import delle funzioni di estrazione e riassunto
+from extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come_html
+from summarizer import summarize_article
 
 
 def crea_articolo_telegraph(
@@ -19,71 +17,84 @@ def crea_articolo_telegraph(
 ) -> Optional[str]:
     """
     Estrae il contenuto da un URL e lo pubblica su Telegra.ph.
-
-    Args:
-        url_articolo: L'URL dell'articolo di origine da cui estrarre i dati.
-        author_name: Nome dell'autore da usare per la pubblicazione (opzionale).
-
-    Returns:
-        L'URL della pagina Telegra.ph appena creata in caso di successo,
-        altrimenti None.
+    (Questa funzione rimane invariata, ma potrebbe essere usata in un flusso di lavoro)
     """
-    # Estrai i metadati
     metadata = estrai_metadati(url_articolo)
     if not metadata:
-        print("Errore: Impossibile estrarre i metadati dall'URL.")
+        print("Errore: Impossibile estrarre i metadati.")
         return None
 
-    # Estrai il contenuto HTML pulito
     html_content = estrai_come_html(url_articolo, pulisci_html=True)
     if not html_content:
-        print("Errore: Impossibile estrarre il contenuto dall'URL.")
+        print("Errore: Impossibile estrarre il contenuto.")
         return None
 
-    # Determina il titolo e l'autore
     titolo = metadata.get("title", "Titolo non disponibile")
-    autore = author_name or metadata.get("author") or "Python Automation Bot"
+    autore = author_name or metadata.get("author") or "Automation Bot"
 
-    # Pubblica su Telegraph
     try:
         telegraph = Telegraph()
         telegraph.create_account(short_name="Python Bot")
-
         response = telegraph.create_page(
-            title=titolo,
-            html_content=html_content,
-            author_name=autore,
+            title=titolo, html_content=html_content, author_name=autore
         )
-
         url_creato = response["url"]
-        print(f"✓ Articolo creato con successo su Telegra.ph!")
-        print(f"  Titolo: {titolo}")
-        print(f"  Autore: {autore}")
+        print(f"✓ Articolo creato con successo su Telegra.ph: {url_creato}")
         return url_creato
-
     except TelegraphException as e:
         print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
         return None
 
 
-# --- Esempio di utilizzo ---
+# --- ESEMPIO DI UTILIZZO DEL NUOVO MODULO SUMMARIZER ---
 if __name__ == "__main__":
     URL_DI_PROVA = "https://www.ansa.it/sito/notizie/mondo/2025/10/19/rapina-al-louvre-rubati-i-gioielli-di-napoleone.-usato-un-montacarichi-panico-fra-i-visitatori_e12d06cd-8901-4ece-b295-b368a0786b5c.html"
 
-    print("=== Creazione articolo su Telegra.ph ===\n")
-    # url_telegraph = crea_articolo_telegraph(URL_DI_PROVA)
-    html_content = estrai_come_html(URL_DI_PROVA, pulisci_html=True)
-    metadata = estrai_metadati(URL_DI_PROVA)
+    print(f"--- ESTRAZIONE CONTENUTO DALL'URL ---")
+    print(f"URL: {URL_DI_PROVA}\\n")
 
-    print(html_content)
+    # 1. Estrai il contenuto completo usando la funzione da extractor.py
+    article_content = estrai_contenuto_da_url(URL_DI_PROVA)
 
-    print("**" * 20)
-    if metadata:
-        print(metadata)
-
-    exit()
-
-    if html_content:
-        print(f"\n✓ Contenuto HTML estratto con successo!")
+    if not article_content:
+        print("Impossibile procedere. L'estrazione del contenuto è fallita.")
     else:
-        print("\n✗ Errore durante l'estrazione del contenuto HTML.")
+        print(f"✓ Estrazione completata:")
+        print(f"  - Titolo: {article_content.title}")
+        print(f"  - Autore: {article_content.author}")
+        print(f"  - Sito: {article_content.sitename}\\n")
+
+        # 2. Genera diversi tipi di riassunti
+        print("--- GENERAZIONE RIASSUNTI (SIMULATA) ---\\n")
+
+        # Esempio 1: Riassunto in tre punti
+        print("--- 1. Riassunto in tre punti (con arricchimento) ---")
+        summary_three_points = summarize_article(
+            article_content,
+            summary_type="three_point_summary",
+            enable_enrichment=True,
+        )
+        if summary_three_points:
+            print(f"\\n**RISULTATO:**\\n{summary_three_points}\\n")
+
+        # Esempio 2: Spiegazione per un bambino (senza arricchimento)
+        print("--- 2. Spiegazione 'Come a un bambino' (senza arricchimento) ---")
+        summary_eli5 = summarize_article(
+            article_content,
+            summary_type="eli5_summary",
+            enable_enrichment=False, # Disabilitiamo l'arricchimento per questo esempio
+            include_hashtags=False # Disabilitiamo gli hashtag qui
+        )
+        if summary_eli5:
+            print(f"\\n**RISULTATO:**\\n{summary_eli5}\\n")
+
+        # Esempio 3: Post per social media
+        print("--- 3. Post per Social Media (con hashtag) ---")
+        summary_social = summarize_article(
+            article_content,
+            summary_type="social_media_post",
+        )
+        if summary_social:
+            print(f"\\n**RISULTATO:**\\n{summary_social}\\n")
+
+        print("--- ESECUZIONE COMPLETATA ---")
