@@ -45,6 +45,24 @@ def crea_articolo_telegraph(
         print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
         return None
 
+def crea_articolo_telegraph_with_content(
+    title: str, content: str, author_name: Optional[str] = None
+) -> Optional[str]:
+    """
+    Pubblica il contenuto su Telegra.ph.
+    """
+    try:
+        telegraph = Telegraph()
+        telegraph.create_account(short_name="Python Bot")
+        response = telegraph.create_page(
+            title=title, html_content=content, author_name=author_name or "Automation Bot"
+        )
+        url_creato = response["url"]
+        print(f"✓ Articolo creato con successo su Telegra.ph: {url_creato}")
+        return url_creato
+    except TelegraphException as e:
+        print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
+        return None
 
 # --- ESEMPIO DI UTILIZZO DEL NUOVO MODULO SUMMARIZER ---
 if __name__ == "__main__":
