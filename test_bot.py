@@ -79,7 +79,7 @@ def test_riassunto(article):
     # Nota: questo test richiede la GEMINI_API_KEY nel file .env
     summary = summarize_article(
         article=article,
-        summary_type="brief",  # Assicurati che questo prompt esista
+        summary_type="one_paragraph_summary",  # Assicurati che questo prompt esista
         enable_enrichment=False,  # Disabilita per semplicità
         include_hashtags=True,
         model_name="gemini-1.5-flash",

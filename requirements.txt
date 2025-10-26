@@ -4,3 +4,4 @@ telegraph
 beautifulsoup4
 python-dotenv
 google-generativeai
+python-telegram-bot
