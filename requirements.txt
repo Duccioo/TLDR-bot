@@ -2,4 +2,5 @@ trafilatura
 requests
 telegraph
 beautifulsoup4
-openai
+python-dotenv
+google-generativeai
