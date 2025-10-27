@@ -70,6 +70,51 @@ def load_available_models():
         return ["gemini-2.5-flash", "gemini-2.0-flash"]
 
 
+def sanitize_html_for_telegram(text):
+    """
+    Sanitize HTML text to only include tags supported by Telegram.
+    Telegram supports: <b>, <i>, <u>, <s>, <a>, <code>, <pre>
+    """
+    if not text:
+        return text
+
+    # List of allowed tags for Telegram HTML parse mode
+    # See: https://core.telegram.org/bots/api#html-style
+    allowed_tags = [
+        "b",
+        "strong",
+        "i",
+        "em",
+        "u",
+        "ins",
+        "s",
+        "strike",
+        "del",
+        "a",
+        "code",
+        "pre",
+        "blockquote",
+        "tg-spoiler",
+    ]
+
+    # Remove all HTML tags except allowed ones
+    # This regex finds all tags and checks if they're allowed
+    def replace_tag(match):
+        tag = (
+            match.group(1).lower().split()[0]
+        )  # Get tag name (e.g., 'mask' from '<mask>')
+        if tag in allowed_tags or tag.startswith("/") and tag[1:] in allowed_tags:
+            return match.group(0)  # Keep allowed tags
+        return ""  # Remove unsupported tags
+
+    # Pattern to match all HTML tags
+    sanitized = re.sub(r"<(/?\w+)[^>]*>", replace_tag, text)
+
+    # Escape special characters for remaining text (but not for allowed tags)
+    # This helps prevent parsing errors
+    return sanitized
+
+
 # Define available models from quota.json
 models = load_available_models()
 model_keyboard = [[model] for model in models]
@@ -93,7 +138,9 @@ def authorized(func):
     """Decorator to check if a user is authorized."""
 
     @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+    async def wrapper(
+        update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs
+    ):
         user_id = update.effective_user.id
         if not is_authorized(user_id):
             await update.message.reply_text(
@@ -150,7 +197,9 @@ async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     else:
         print(f"User {user_id} entered wrong password.")
-        await update.message.reply_text("⛔ Password errata. Riprova.", parse_mode="HTML")
+        await update.message.reply_text(
+            "⛔ Password errata. Riprova.", parse_mode="HTML"
+        )
         return AUTH
 
 
@@ -169,7 +218,9 @@ async def toggle_web_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Toggles web search on or off."""
     context.user_data["web_search"] = not context.user_data.get("web_search", False)
     status = "attiva" if context.user_data["web_search"] else "disattiva"
-    await update.message.reply_text(f"🌐 Ricerca web <b>{status}</b>.", parse_mode="HTML")
+    await update.message.reply_text(
+        f"🌐 Ricerca web <b>{status}</b>.", parse_mode="HTML"
+    )
 
 
 @authorized
@@ -177,7 +228,9 @@ async def toggle_url_context(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Toggles URL context on or off."""
     context.user_data["url_context"] = not context.user_data.get("url_context", False)
     status = "attivo" if context.user_data["url_context"] else "disattivo"
-    await update.message.reply_text(f"🔗 Contesto URL <b>{status}</b>.", parse_mode="HTML")
+    await update.message.reply_text(
+        f"🔗 Contesto URL <b>{status}</b>.", parse_mode="HTML"
+    )
 
 
 @authorized
@@ -209,13 +262,17 @@ async def prompt_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels the conversation."""
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
-    await update.message.reply_text("❌ Operazione annullata.", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "❌ Operazione annullata.", reply_markup=reply_markup
+    )
     return ConversationHandler.END
 
 
 async def cancel_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels the authentication process."""
-    await update.message.reply_text("❌ Autenticazione annullata. Usa /start per riprovare.")
+    await update.message.reply_text(
+        "❌ Autenticazione annullata. Usa /start per riprovare."
+    )
     return ConversationHandler.END
 
 
@@ -249,7 +306,9 @@ async def model_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a summary of the API quota usage."""
     summary = get_quota_summary()
-    await update.message.reply_text(f"📊 <b>Quota API Gemini</b> 📊\n\n{summary}", parse_mode="HTML")
+    await update.message.reply_text(
+        f"📊 <b>Quota API Gemini</b> 📊\n\n{summary}", parse_mode="HTML"
+    )
 
 
 @authorized
@@ -348,8 +407,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if one_paragraph_summary and telegraph_url:
         print("Sending complete summary...")
+        # Sanitize the summary to remove unsupported HTML tags
+        sanitized_summary = sanitize_html_for_telegram(one_paragraph_summary)
         await update.message.reply_text(
-            f"📰 <b>Ecco un riassunto:</b>\n\n{one_paragraph_summary}\n\n"
+            f"📰 <b>Ecco un riassunto:</b>\n\n{sanitized_summary}\n\n"
             f"📄 <a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
             parse_mode="HTML",
         )
@@ -372,6 +433,11 @@ def main():
     """Main function to run the bot."""
     # Setup signal handler for Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Inizializza il file quota.json se non esiste
+    from core.quota_manager import get_quota_data
+    print("🔍 Verifica esistenza file quota.json...")
+    get_quota_data()  # Questo creerà il file se non esiste
 
     print(f"Initializing bot with token: {TELEGRAM_BOT_TOKEN[:10]}...")
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()

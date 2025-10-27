@@ -3,6 +3,7 @@ Modulo per la gestione delle quote API di Google Gemini.
 """
 
 import json
+import os
 from threading import RLock
 from datetime import datetime, timedelta
 
@@ -10,20 +11,91 @@ QUOTA_FILE = "src/data/quota.json"
 lock = RLock()  # Changed from Lock to RLock to allow re-entrant locking
 
 
+def initialize_quota_file():
+    """
+    Inizializza il file quota.json con i dati dei modelli text-out del free tier di Google Gemini.
+    Dati presi da: https://ai.google.dev/gemini-api/docs/rate-limits#free-tier
+    """
+    # Dati aggiornati al 27 ottobre 2025 per il free tier (text-out models)
+    default_quota_data = {
+        "gemini": {
+            "gemini-2.5-pro": {
+                "requests_per_minute": 5,
+                "tokens_per_minute": 125000,
+                "requests_per_day": 100,
+                "usage_timestamps": [],
+            },
+            "gemini-2.5-flash": {
+                "requests_per_minute": 10,
+                "tokens_per_minute": 250000,
+                "requests_per_day": 250,
+                "usage_timestamps": [],
+            },
+            "gemini-2.5-flash-preview": {
+                "requests_per_minute": 10,
+                "tokens_per_minute": 250000,
+                "requests_per_day": 250,
+                "usage_timestamps": [],
+            },
+            "gemini-2.5-flash-lite": {
+                "requests_per_minute": 15,
+                "tokens_per_minute": 250000,
+                "requests_per_day": 1000,
+                "usage_timestamps": [],
+            },
+            "gemini-2.5-flash-lite-preview": {
+                "requests_per_minute": 15,
+                "tokens_per_minute": 250000,
+                "requests_per_day": 1000,
+                "usage_timestamps": [],
+            },
+            "gemini-2.0-flash": {
+                "requests_per_minute": 15,
+                "tokens_per_minute": 1000000,
+                "requests_per_day": 200,
+                "usage_timestamps": [],
+            },
+            "gemini-2.0-flash-lite": {
+                "requests_per_minute": 30,
+                "tokens_per_minute": 1000000,
+                "requests_per_day": 200,
+                "usage_timestamps": [],
+            },
+        }
+    }
+
+    # Crea la directory se non esiste
+    os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
+
+    # Salva i dati nel file
+    with open(QUOTA_FILE, "w", encoding="utf-8") as f:
+        json.dump(default_quota_data, f, indent=4)
+
+    print(f"✅ File {QUOTA_FILE} inizializzato con successo!")
+    return default_quota_data
+
+
 def get_quota_data():
     """Legge i dati sulle quote dal file JSON."""
     with lock:
         try:
-            with open(QUOTA_FILE, "r") as f:
+            with open(QUOTA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        except FileNotFoundError:
+            # Se il file non esiste, lo inizializza
+            print(f"⚠️  File {QUOTA_FILE} non trovato. Inizializzazione in corso...")
+            return initialize_quota_file()
+        except json.JSONDecodeError:
+            print(f"⚠️  Errore nel parsing di {QUOTA_FILE}. Reinizializzazione...")
+            return initialize_quota_file()
 
 
 def save_quota_data(data):
     """Salva i dati sulle quote nel file JSON."""
     with lock:
-        with open(QUOTA_FILE, "w") as f:
+        # Crea la directory se non esiste
+        os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
+        with open(QUOTA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
 
