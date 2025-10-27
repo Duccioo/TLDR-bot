@@ -46,16 +46,27 @@ def crea_articolo_telegraph(
         return None
 
 def crea_articolo_telegraph_with_content(
-    title: str, content: str, author_name: Optional[str] = None
+    title: str,
+    content: str,
+    author_name: Optional[str] = None,
+    image_urls: Optional[list] = None,
 ) -> Optional[str]:
     """
-    Pubblica il contenuto su Telegra.ph.
+    Pubblica il contenuto e le immagini su Telegra.ph.
     """
+    html_content = ""
+    if image_urls:
+        for url in image_urls:
+            html_content += f"<img src='{url}'><br>"
+    html_content += content
+
     try:
         telegraph = Telegraph()
         telegraph.create_account(short_name="Python Bot")
         response = telegraph.create_page(
-            title=title, html_content=content, author_name=author_name or "Automation Bot"
+            title=title,
+            html_content=html_content,
+            author_name=author_name or "Automation Bot",
         )
         url_creato = response["url"]
         print(f"✓ Articolo creato con successo su Telegra.ph: {url_creato}")
