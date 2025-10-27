@@ -5,7 +5,7 @@ Utilizza Google Gemini per la generazione dei riassunti.
 
 import os
 import re
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict, Any
 from dotenv import load_dotenv
 
 # Importa le classi necessarie
@@ -56,17 +56,21 @@ def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
 
 
 # --- Funzione di chiamata all'LLM (Implementazione con Google Gemini) ---
+from google.generativeai import types as genai_types
 
 
-def _call_llm_api(prompt: str, model_name: str = "gemini-2.5-flash-lite") -> str:
+def _call_llm_api(
+    prompt: str,
+    model_name: str = "gemini-1.5-flash",
+    tools: Optional[List[genai_types.Tool]] = None,
+) -> str:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
 
-    Questa funzione richiede che la variabile d'ambiente GEMINI_API_KEY sia impostata nel file .env.
-
     Args:
         prompt: Il prompt completo da inviare al modello.
-        model_name: Il nome del modello Gemini da utilizzare (default: "gemini-1.5-flash").
+        model_name: Il nome del modello Gemini da utilizzare.
+        tools: Una lista di tool da passare al modello (es. per la ricerca web).
 
     Returns:
         Il riassunto generato, o un messaggio di errore.
@@ -81,11 +85,8 @@ def _call_llm_api(prompt: str, model_name: str = "gemini-2.5-flash-lite") -> str
 
     try:
         print(f"\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---")
-
-        # Configura l'API di Gemini
         genai.configure(api_key=api_key)
 
-        # Crea il modello
         model = genai.GenerativeModel(
             model_name=model_name,
             generation_config={
@@ -95,8 +96,7 @@ def _call_llm_api(prompt: str, model_name: str = "gemini-2.5-flash-lite") -> str
             },
         )
 
-        # Genera il contenuto
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, tools=tools)
 
         print("--- Chiamata API completata con successo! ---")
         return response.text.strip()
@@ -111,10 +111,10 @@ def summarize_article(
     article: ArticleContent,
     summary_type: str,
     prompts_dir: str = "src/bot/prompts",
-    enable_enrichment: bool = True,
-    include_hashtags: bool = True,
+    use_web_search: bool = False,
+    use_url_context: bool = False,
     model_name: str = "gemini-1.5-flash",
-) -> Optional[str]:
+) -> Optional[Dict[str, Any]]:
     prompt_path = os.path.join(prompts_dir, f"{summary_type}.md")
     if not os.path.exists(prompt_path):
         print(f"Errore: Il file di prompt non esiste: {prompt_path}")
@@ -123,34 +123,40 @@ def summarize_article(
     with open(prompt_path, "r", encoding="utf-8") as f:
         template = f.read()
 
-    enrichment_context = ""
-    if enable_enrichment:
-        web_search_context = _enrich_with_web_search(article.title)
-        if web_search_context:
-            enrichment_context += f"\\n**Contesto aggiuntivo:** {web_search_context}\\n"
-
     # Popola il template
     prompt = template.replace("{{title}}", article.title or "N/A")
-    prompt = prompt.replace("{{text}}", (article.text or "N/A") + enrichment_context)
+    prompt = prompt.replace("{{text}}", article.text or "N/A")
     prompt = prompt.replace("{{author}}", article.author or "N/A")
     prompt = prompt.replace("{{date}}", article.date or "N/A")
     prompt = prompt.replace("{{url}}", article.url or "N/A")
     prompt = prompt.replace("{{sitename}}", article.sitename or "N/A")
 
+    # Configura i tool di Gemini
+    tools = []
+    if use_web_search:
+        tools.append({"google_search": {}})
+    if use_url_context and article.url:
+        tools.append({"url_context": {}})
+        prompt = f"Basandoti sul contenuto dell'URL {article.url}, {prompt}"
+
     # Attendi il rate limit
     wait_for_rate_limit(model_name)
 
     # Chiama l'API LLM
-    summary = _call_llm_api(prompt, model_name=model_name)
+    summary_text = _call_llm_api(prompt, model_name=model_name, tools=tools or None)
 
-    # Incrementa il contatore delle richieste se la chiamata ha avuto successo
-    if "ERRORE:" not in summary:
+    # Incrementa il contatore delle richieste
+    if "ERRORE:" not in summary_text:
         increment_request_count(model_name)
 
-    # Aggiungi hashtag
-    if include_hashtags and "ERRORE:" not in summary:
-        hashtags = generate_hashtags(article, summary)
-        if hashtags:
-            summary += f"\\n\\n---\\n**Hashtag:**\\n{hashtags}"
+    # Aggiungi hashtag solo se non ce ne sono già
+    if "ERRORE:" not in summary_text:
+        if not article.tags:
+            hashtags = generate_hashtags(article, summary_text)
+            if hashtags:
+                summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
 
-    return summary
+    return {
+        "summary": summary_text,
+        "images": article.images,
+    }

@@ -77,13 +77,14 @@ def test_riassunto(article):
     print(f"   Articolo: {article.title}\n")
 
     # Nota: questo test richiede la GEMINI_API_KEY nel file .env
-    summary = summarize_article(
+    summary_data = summarize_article(
         article=article,
         summary_type="one_paragraph_summary",  # Assicurati che questo prompt esista
-        enable_enrichment=False,  # Disabilita per semplicità
-        include_hashtags=True,
+        use_web_search=False,
+        use_url_context=False,
         model_name="gemini-1.5-flash",
     )
+    summary = summary_data.get("summary") if summary_data else None
 
     if summary and "ERRORE:" not in summary:
         print("✓ Riassunto generato con successo!\n")

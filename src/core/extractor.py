@@ -24,6 +24,7 @@ class ArticleContent:
     sitename: Optional[str] = None
     categories: Optional[list] = None
     tags: Optional[list] = None
+    images: Optional[list] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Converte l'articolo in un dizionario."""
@@ -37,6 +38,7 @@ class ArticleContent:
             "sitename": self.sitename,
             "categories": self.categories,
             "tags": self.tags,
+            "images": self.images,
         }
 
 
@@ -73,34 +75,31 @@ def estrai_contenuto_da_url(
         print(f"Errore: Impossibile raggiungere l'URL '{url}'. Dettagli: {e}")
         return None
 
-    # Estrai i metadati
-    metadata = trafilatura.extract_metadata(response.content)
-
-    # Estrai il testo principale
-    text_content = trafilatura.extract(
+    # Estrai il testo principale e le immagini
+    extracted_data = trafilatura.bare_extraction(
         response.content,
         include_images=include_images,
         include_links=include_links,
-        output_format="txt",
+        output_format="python",
+        with_metadata=True,
     )
 
-    if not text_content:
+    if not extracted_data or not extracted_data.text:
         print("Errore: Trafilatura non è riuscito a estrarre contenuto significativo.")
         return None
 
     # Costruisci l'oggetto ArticleContent
     article = ArticleContent(
-        title=(
-            metadata.title if metadata and metadata.title else "Titolo non disponibile"
-        ),
-        text=text_content,
-        author=metadata.author if metadata else None,
-        date=metadata.date if metadata else None,
+        title=extracted_data.title or "Titolo non disponibile",
+        text=extracted_data.text,
+        author=extracted_data.author,
+        date=extracted_data.date,
         url=url,
-        description=metadata.description if metadata else None,
-        sitename=metadata.sitename if metadata else None,
-        categories=metadata.categories if metadata else None,
-        tags=metadata.tags if metadata else None,
+        description=extracted_data.description,
+        sitename=extracted_data.sitename,
+        categories=extracted_data.categories,
+        tags=extracted_data.tags,
+        images=[img.src for img in ([extracted_data.image] if extracted_data.image else []) if hasattr(img, 'src') and img.src],
     )
 
     return article
