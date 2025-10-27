@@ -1,0 +1,23 @@
+# Ignora la directory di Git
+.git
+.github
+
+# Ignora i file specifici di Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignora i file di ambiente locali
+.env
+
+# Ignora la documentazione e altri file non necessari
+docs/
+.gitignore
+.gitattributes
+README.md
+LICENSE
+test_bot.py
+test_connection.py
+test_limit.py
+.env.example

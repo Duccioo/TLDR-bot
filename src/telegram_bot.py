@@ -7,6 +7,7 @@ import re
 import json
 import sys
 import signal
+from functools import wraps
 from dotenv import load_dotenv
 from telegram import ReplyKeyboardMarkup, Update, ReplyKeyboardRemove
 from telegram.ext import (
@@ -29,6 +30,7 @@ load_dotenv()
 
 # Get the Telegram bot token from the environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 PROMPTS_FOLDER = os.path.join("src", "prompts")
 
 
@@ -36,14 +38,17 @@ if not TELEGRAM_BOT_TOKEN:
     print("Error: TELEGRAM_BOT_TOKEN environment variable not set.")
     exit()
 
-# States for conversation
-CHOOSE_PROMPT, CHOOSE_MODEL = 1, 2
+# In-memory storage for authorized user IDs
+AUTHORIZED_USERS = []
 
-# Define the keyboard layout
+# States for conversation
+CHOOSE_PROMPT, CHOOSE_MODEL, AUTH = 1, 2, 3
+
+# Define the keyboard layout with emojis
 main_keyboard = [
-    ["Scegli Prompt", "Cambia Modello"],
-    ["Web Search On/Off", "URL Context On/Off"],
-    ["Quota API Gemini"],
+    ["📝 Scegli Prompt", "🤖 Cambia Modello"],
+    ["🌐 Web Search On/Off", "🔗 URL Context On/Off"],
+    ["📊 Quota API Gemini"],
 ]
 
 
@@ -76,61 +81,125 @@ prompt_files = [
 prompt_keyboard = [[prompt] for prompt in prompt_files]
 
 
+def is_authorized(user_id):
+    """Checks if a user is authorized."""
+    # If no password is set, everyone is authorized
+    if not BOT_PASSWORD:
+        return True
+    return user_id in AUTHORIZED_USERS
+
+
+def authorized(func):
+    """Decorator to check if a user is authorized."""
+
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        if not is_authorized(user_id):
+            await update.message.reply_text(
+                "⛔ Non sei autorizzato. Per favore, usa /start per autenticarti.",
+                parse_mode="HTML",
+            )
+            return
+        return await func(update, context, *args, **kwargs)
+
+    return wrapper
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message when the /start command is issued."""
-    print(f"Received /start command from user {update.effective_user.id}")
+    user_id = update.effective_user.id
+    print(f"Received /start command from user {user_id}")
+
+    if not is_authorized(user_id):
+        await update.message.reply_text(
+            "🔐 Questo bot è protetto da password. Per favore, inserisci la password per continuare:",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="HTML",
+        )
+        return AUTH
+
     context.user_data["web_search"] = False
     context.user_data["url_context"] = False
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "<b>Benvenuto nel bot riassuntore!</b> Inviami un link per iniziare.",
+        "👋 <b>Benvenuto nel bot riassuntore!</b> Inviami un link per iniziare.",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
     print("Welcome message sent successfully")
+    return ConversationHandler.END
 
 
+async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Checks the password entered by the user."""
+    password = update.message.text
+    user_id = update.effective_user.id
+
+    if password == BOT_PASSWORD:
+        AUTHORIZED_USERS.append(user_id)
+        print(f"User {user_id} authorized successfully.")
+        context.user_data["web_search"] = False
+        context.user_data["url_context"] = False
+        reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            "<b>Accesso consentito!</b> ✅ Ora puoi usare il bot. Inviami un link per iniziare.",
+            reply_markup=reply_markup,
+            parse_mode="HTML",
+        )
+        return ConversationHandler.END
+    else:
+        print(f"User {user_id} entered wrong password.")
+        await update.message.reply_text("⛔ Password errata. Riprova.", parse_mode="HTML")
+        return AUTH
+
+
+@authorized
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a help message when the /help command is issued."""
     await update.message.reply_text(
-        "Inviami un link a un articolo e io lo riassumerò per te.\n"
+        "ℹ️ Inviami un link a un articolo e io lo riassumerò per te.\n"
         "Usa la tastiera per scegliere un prompt diverso o controllare le quote API.",
         parse_mode="HTML",
     )
 
 
+@authorized
 async def toggle_web_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Toggles web search on or off."""
     context.user_data["web_search"] = not context.user_data.get("web_search", False)
     status = "attiva" if context.user_data["web_search"] else "disattiva"
-    await update.message.reply_text(f"Ricerca web <b>{status}</b>.", parse_mode="HTML")
+    await update.message.reply_text(f"🌐 Ricerca web <b>{status}</b>.", parse_mode="HTML")
 
 
+@authorized
 async def toggle_url_context(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Toggles URL context on or off."""
     context.user_data["url_context"] = not context.user_data.get("url_context", False)
     status = "attivo" if context.user_data["url_context"] else "disattivo"
-    await update.message.reply_text(f"Contesto URL <b>{status}</b>.", parse_mode="HTML")
+    await update.message.reply_text(f"🔗 Contesto URL <b>{status}</b>.", parse_mode="HTML")
 
 
+@authorized
 async def choose_prompt_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Starts the conversation to choose a prompt."""
     reply_markup = ReplyKeyboardMarkup(prompt_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "Scegli un prompt per il riassunto:",
+        "📝 Scegli un prompt per il riassunto:",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
     return CHOOSE_PROMPT
 
 
+@authorized
 async def prompt_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stores the chosen prompt."""
     prompt = update.message.text
     context.user_data["prompt"] = prompt
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        f"Prompt impostato su: <b>{prompt}</b>",
+        f"👍 Prompt impostato su: <b>{prompt}</b>",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -140,60 +209,70 @@ async def prompt_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels the conversation."""
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
-    await update.message.reply_text("Operation canceled.", reply_markup=reply_markup)
+    await update.message.reply_text("❌ Operazione annullata.", reply_markup=reply_markup)
     return ConversationHandler.END
 
 
+async def cancel_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancels the authentication process."""
+    await update.message.reply_text("❌ Autenticazione annullata. Usa /start per riprovare.")
+    return ConversationHandler.END
+
+
+@authorized
 async def choose_model_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Starts the conversation to choose a model."""
     reply_markup = ReplyKeyboardMarkup(model_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "Scegli un modello per il riassunto:",
+        "🤖 Scegli un modello per il riassunto:",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
     return CHOOSE_MODEL
 
 
+@authorized
 async def model_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stores the chosen model."""
     model = update.message.text
     context.user_data["model"] = model
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        f"Modello impostato su: <b>{model}</b>",
+        f"👍 Modello impostato su: <b>{model}</b>",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
     return ConversationHandler.END
 
 
+@authorized
 async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a summary of the API quota usage."""
     summary = get_quota_summary()
-    await update.message.reply_text(summary, parse_mode="HTML")
+    await update.message.reply_text(f"📊 <b>Quota API Gemini</b> 📊\n\n{summary}", parse_mode="HTML")
 
 
+@authorized
 async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
     url_pattern = r"https?://[^\s]+"
     match = re.search(url_pattern, update.message.text)
     if not match:
         await update.message.reply_text(
-            "Per favore, invia un URL valido.", parse_mode="HTML"
+            "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
         )
         return
 
     url = match.group(0)
     await update.message.reply_text(
-        "Elaborazione dell'URL in corso...", parse_mode="HTML"
+        "⏳ Elaborazione dell'URL in corso...", parse_mode="HTML"
     )
 
     # Extract content
     article_content = estrai_contenuto_da_url(url)
     if not article_content:
         await update.message.reply_text(
-            "Impossibile estrarre il contenuto dall'URL.", parse_mode="HTML"
+            "😥 Impossibile estrarre il contenuto dall'URL.", parse_mode="HTML"
         )
         return
 
@@ -227,7 +306,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Error during summarization: {e}", flush=True)
         await update.message.reply_text(
-            "Si è verificato un errore durante la generazione del riassunto.",
+            "🤖 Si è verificato un errore durante la generazione del riassunto.",
             parse_mode="HTML",
         )
         return
@@ -236,7 +315,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not one_paragraph_summary_data or not technical_summary_data:
         print("Summary data is None!", flush=True)
         await update.message.reply_text(
-            "Impossibile generare il riassunto. Verifica che i file prompt esistano.",
+            "😥 Impossibile generare il riassunto. Verifica che i file prompt esistano.",
             parse_mode="HTML",
         )
         return
@@ -270,15 +349,15 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if one_paragraph_summary and telegraph_url:
         print("Sending complete summary...")
         await update.message.reply_text(
-            f"<b>Ecco un riassunto:</b>\n\n{one_paragraph_summary}\n\n"
-            f"<a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
+            f"📰 <b>Ecco un riassunto:</b>\n\n{one_paragraph_summary}\n\n"
+            f"📄 <a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
             parse_mode="HTML",
         )
         print("Summary sent successfully!")
     else:
         print("Sending error message...")
         await update.message.reply_text(
-            "Impossibile generare il riassunto.", parse_mode="HTML"
+            "😥 Impossibile generare il riassunto.", parse_mode="HTML"
         )
         print("Error message sent")
 
@@ -298,14 +377,24 @@ def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     print("Adding handlers...")
+
+    # Add authentication handler
+    auth_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            AUTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_password)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_auth)],
+    )
+    application.add_handler(auth_handler)
+
     # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
     # Add conversation handler for choosing a prompt
     prompt_conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^Scegli Prompt$"), choose_prompt_start)
+            MessageHandler(filters.Regex("^📝 Scegli Prompt$"), choose_prompt_start)
         ],
         states={
             CHOOSE_PROMPT: [
@@ -319,7 +408,7 @@ def main():
     # Add conversation handler for choosing a model
     model_conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^Cambia Modello$"), choose_model_start)
+            MessageHandler(filters.Regex("^🤖 Cambia Modello$"), choose_model_start)
         ],
         states={
             CHOOSE_MODEL: [
@@ -332,15 +421,15 @@ def main():
 
     # Add handler for API quota
     application.add_handler(
-        MessageHandler(filters.Regex("^Quota API Gemini$"), api_quota)
+        MessageHandler(filters.Regex("^📊 Quota API Gemini$"), api_quota)
     )
 
     # Add handlers for toggling features
     application.add_handler(
-        MessageHandler(filters.Regex("^Web Search On/Off$"), toggle_web_search)
+        MessageHandler(filters.Regex("^🌐 Web Search On/Off$"), toggle_web_search)
     )
     application.add_handler(
-        MessageHandler(filters.Regex("^URL Context On/Off$"), toggle_url_context)
+        MessageHandler(filters.Regex("^🔗 URL Context On/Off$"), toggle_url_context)
     )
 
     # on non command i.e message - summarize the URL
