@@ -1,1 +1,22 @@
-{}
+{
+  "gemini": {
+    "gemini-1.5-pro-latest": {
+      "requests_per_minute": 2,
+      "tokens_per_minute": 32768,
+      "requests_per_day": 50,
+      "usage_timestamps": []
+    },
+    "gemini-1.5-flash-latest": {
+      "requests_per_minute": 15,
+      "tokens_per_minute": 1048576,
+      "requests_per_day": 1000,
+      "usage_timestamps": []
+    },
+    "gemini-pro-latest": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 49152,
+      "requests_per_day": 100,
+      "usage_timestamps": []
+    }
+  }
+}

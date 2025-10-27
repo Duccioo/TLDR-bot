@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # Importa le classi necessarie
 from core.extractor import ArticleContent
 from core.rate_limiter import wait_for_rate_limit
-from core.quota_manager import increment_request_count
+from core.quota_manager import update_model_usage
 import google.generativeai as genai
 
 # Carica le variabili d'ambiente dal file .env
@@ -63,7 +63,7 @@ def _call_llm_api(
     prompt: str,
     model_name: str = "gemini-1.5-flash",
     tools: Optional[List[genai_types.Tool]] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
 
@@ -73,15 +73,15 @@ def _call_llm_api(
         tools: Una lista di tool da passare al modello (es. per la ricerca web).
 
     Returns:
-        Il riassunto generato, o un messaggio di errore.
+        Un dizionario contenente il riassunto generato e il conteggio dei token,
+        o un messaggio di errore.
     """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        return (
-            "**ERRORE:** La variabile d'ambiente `GEMINI_API_KEY` non è stata impostata. "
-            "Per favore, aggiungi la tua chiave API di Google Gemini al file .env:\n"
-            "GEMINI_API_KEY=your_api_key_here"
-        )
+        return {
+            "summary": "**ERRORE:** La variabile d'ambiente `GEMINI_API_KEY` non è stata impostata.",
+            "token_count": 0,
+        }
 
     try:
         print(f"\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---")
@@ -97,13 +97,17 @@ def _call_llm_api(
         )
 
         response = model.generate_content(prompt, tools=tools)
+        token_count = response.usage_metadata.total_token_count
 
         print("--- Chiamata API completata con successo! ---")
-        return response.text.strip()
+        return {"summary": response.text.strip(), "token_count": token_count}
 
     except Exception as e:
         print(f"--- ERRORE durante la chiamata all'API di Google Gemini: {e} ---")
-        return f"**ERRORE:** Impossibile completare la richiesta all'API di Google Gemini. Dettagli: {e}"
+        return {
+            "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
+            "token_count": 0,
+        }
 
 
 # --- Funzione Principale ---
@@ -143,18 +147,19 @@ def summarize_article(
     wait_for_rate_limit(model_name)
 
     # Chiama l'API LLM
-    summary_text = _call_llm_api(prompt, model_name=model_name, tools=tools or None)
+    llm_response = _call_llm_api(prompt, model_name=model_name, tools=tools or None)
+    summary_text = llm_response["summary"]
+    token_count = llm_response["token_count"]
 
     # Incrementa il contatore delle richieste
     if "ERRORE:" not in summary_text:
-        increment_request_count(model_name)
+        update_model_usage(model_name, token_count)
 
     # Aggiungi hashtag solo se non ce ne sono già
-    if "ERRORE:" not in summary_text:
-        if not article.tags:
-            hashtags = generate_hashtags(article, summary_text)
-            if hashtags:
-                summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
+    if "ERRORE:" not in summary_text and not article.tags:
+        hashtags = generate_hashtags(article, summary_text)
+        if hashtags:
+            summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
 
     return {
         "summary": summary_text,

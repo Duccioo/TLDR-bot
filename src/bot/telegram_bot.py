@@ -42,7 +42,7 @@ main_keyboard = [
 ]
 
 # Define available models
-models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+models = ["gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-pro-latest"]
 model_keyboard = [[model] for model in models]
 
 # Get available prompts
