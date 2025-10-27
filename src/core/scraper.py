@@ -8,8 +8,8 @@ from telegraph import Telegraph
 from telegraph.exceptions import TelegraphException
 
 # Import delle funzioni di estrazione e riassunto
-from extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come_html
-from summarizer import summarize_article
+from core.extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come_html
+from core.summarizer import summarize_article
 
 
 def crea_articolo_telegraph(

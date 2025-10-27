@@ -3,9 +3,9 @@ Script di esempio per testare le funzionalità del TLDR-bot.
 Dimostra l'estrazione, il riassunto e la pubblicazione di articoli.
 """
 
-from src.extractor import estrai_contenuto_da_url, estrai_come_markdown, estrai_metadati
-from src.scraper import crea_articolo_telegraph
-from src.summarizer import summarize_article
+from src.core.extractor import estrai_contenuto_da_url, estrai_come_markdown, estrai_metadati
+from src.core.scraper import crea_articolo_telegraph
+from src.core.summarizer import summarize_article
 
 
 def test_estrazione():
