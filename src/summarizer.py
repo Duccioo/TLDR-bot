@@ -108,14 +108,13 @@ def _call_llm_api(prompt: str, model_name: str = "gemini-1.5-flash") -> str:
 
 
 # --- Funzione Principale ---
-# (La logica principale rimane quasi invariata)
 def summarize_article(
     article: ArticleContent,
     summary_type: str,
     prompts_dir: str = "src/prompts",
     enable_enrichment: bool = True,
     include_hashtags: bool = True,
-    model_name: str = "gemini-1.5-flash",
+    model_name: str = "gemini-2.5-flash-lite",
 ) -> Optional[str]:
     prompt_path = os.path.join(prompts_dir, f"{summary_type}.md")
     if not os.path.exists(prompt_path):
