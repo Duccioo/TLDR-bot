@@ -58,7 +58,7 @@ def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
 # --- Funzione di chiamata all'LLM (Implementazione con Google Gemini) ---
 
 
-def _call_llm_api(prompt: str, model_name: str = "gemini-1.5-flash") -> str:
+def _call_llm_api(prompt: str, model_name: str = "gemini-2.5-flash-lite") -> str:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
 
@@ -80,9 +80,7 @@ def _call_llm_api(prompt: str, model_name: str = "gemini-1.5-flash") -> str:
         )
 
     try:
-        print(
-            f"\\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---"
-        )
+        print(f"\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---")
 
         # Configura l'API di Gemini
         genai.configure(api_key=api_key)
@@ -91,10 +89,9 @@ def _call_llm_api(prompt: str, model_name: str = "gemini-1.5-flash") -> str:
         model = genai.GenerativeModel(
             model_name=model_name,
             generation_config={
-                "temperature": 0.7,
+                "temperature": 0.6,
                 "top_p": 0.95,
                 "top_k": 40,
-                "max_output_tokens": 2048,
             },
         )
 
