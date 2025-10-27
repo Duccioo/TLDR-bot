@@ -3,11 +3,11 @@ Modulo per la gestione delle quote API di Google Gemini.
 """
 
 import json
-from threading import Lock
+from threading import RLock
 from datetime import datetime, timedelta
 
 QUOTA_FILE = "src/data/quota.json"
-lock = Lock()
+lock = RLock()  # Changed from Lock to RLock to allow re-entrant locking
 
 
 def get_quota_data():
@@ -40,7 +40,7 @@ def update_model_usage(model_name: str, token_count: int):
             # Aggiunge un dizionario con timestamp e token
             usage_record = {
                 "timestamp": datetime.utcnow().isoformat(),
-                "tokens": token_count
+                "tokens": token_count,
             }
             data["gemini"][model_name]["usage_timestamps"].append(usage_record)
             save_quota_data(data)
@@ -66,7 +66,8 @@ def get_quota_summary():
 
             # Filtra le richieste dell'ultimo minuto
             recent_requests = [
-                r for r in timestamps
+                r
+                for r in timestamps
                 if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(minutes=1)
             ]
             rpm_usage = len(recent_requests)
@@ -76,15 +77,22 @@ def get_quota_summary():
 
             # Filtra le richieste di oggi
             today_requests = [
-                r for r in timestamps
+                r
+                for r in timestamps
                 if now.date() == datetime.fromisoformat(r["timestamp"]).date()
             ]
             rpd_usage = len(today_requests)
             rpd_percentage = (rpd_usage / rpd_limit * 100) if rpd_limit > 0 else 0
 
             summary += f"<b>Modello:</b> <code>{model}</code>\n"
-            summary += f"  - <b>RPM:</b> {rpm_usage}/{rpm_limit} ({rpm_percentage:.2f}%)\n"
-            summary += f"  - <b>TPM:</b> {tpm_usage}/{tpm_limit} ({tpm_percentage:.2f}%)\n"
-            summary += f"  - <b>RPD:</b> {rpd_usage}/{rpd_limit} ({rpd_percentage:.2f}%)\n\n"
+            summary += (
+                f"  - <b>RPM:</b> {rpm_usage}/{rpm_limit} ({rpm_percentage:.2f}%)\n"
+            )
+            summary += (
+                f"  - <b>TPM:</b> {tpm_usage}/{tpm_limit} ({tpm_percentage:.2f}%)\n"
+            )
+            summary += (
+                f"  - <b>RPD:</b> {rpd_usage}/{rpd_limit} ({rpd_percentage:.2f}%)\n\n"
+            )
 
         return summary

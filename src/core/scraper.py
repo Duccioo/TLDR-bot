@@ -3,6 +3,7 @@ Modulo per l'orchestrazione dell'estrazione e del riassunto di articoli.
 Contiene anche una funzione per pubblicare su Telegra.ph.
 """
 
+import re
 from typing import Optional
 from telegraph import Telegraph
 from telegraph.exceptions import TelegraphException
@@ -10,6 +11,54 @@ from telegraph.exceptions import TelegraphException
 # Import delle funzioni di estrazione e riassunto
 from core.extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come_html
 from core.summarizer import summarize_article
+
+
+def markdown_to_html(markdown_text: str) -> str:
+    """
+    Converte Markdown semplice in HTML compatibile con Telegraph.
+    Telegraph supporta un subset di HTML: <p>, <br>, <h3>, <h4>, <strong>, <em>, <a>, <ul>, <ol>, <li>
+    """
+    html = markdown_text
+
+    # Converti headers (## -> h3, ### -> h4)
+    html = re.sub(r"^### (.+)$", r"<h4>\1</h4>", html, flags=re.MULTILINE)
+    html = re.sub(r"^## (.+)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
+    html = re.sub(r"^# (.+)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
+
+    # Converti bold (**text** -> <strong>text</strong>)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+
+    # Converti italic (*text* -> <em>text</em>)
+    html = re.sub(r"\*(.+?)\*", r"<em>\1</em>", html)
+
+    # Converti link ([text](url) -> <a href="url">text</a>)
+    html = re.sub(r"\[([^\]]+)\]\(([^\)]+)\)", r'<a href="\2">\1</a>', html)
+
+    # Converti liste non ordinate (- item -> <li>item</li>)
+    lines = html.split("\n")
+    in_list = False
+    result_lines = []
+
+    for line in lines:
+        if line.strip().startswith("- "):
+            if not in_list:
+                result_lines.append("<ul>")
+                in_list = True
+            item = line.strip()[2:]
+            result_lines.append(f"<li>{item}</li>")
+        else:
+            if in_list:
+                result_lines.append("</ul>")
+                in_list = False
+            if line.strip():
+                result_lines.append(f"<p>{line}</p>")
+            else:
+                result_lines.append("<br>")
+
+    if in_list:
+        result_lines.append("</ul>")
+
+    return "\n".join(result_lines)
 
 
 def crea_articolo_telegraph(
@@ -45,6 +94,7 @@ def crea_articolo_telegraph(
         print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
         return None
 
+
 def crea_articolo_telegraph_with_content(
     title: str,
     content: str,
@@ -52,13 +102,18 @@ def crea_articolo_telegraph_with_content(
     image_urls: Optional[list] = None,
 ) -> Optional[str]:
     """
-    Pubblica il contenuto e le immagini su Telegra.ph.
+    Pubblica il contenuto (in Markdown) e le immagini su Telegra.ph.
+    Converte automaticamente il Markdown in HTML.
     """
     html_content = ""
+
+    # Aggiungi immagini in cima
     if image_urls:
         for url in image_urls:
             html_content += f"<img src='{url}'><br>"
-    html_content += content
+
+    # Converti il contenuto da Markdown a HTML
+    html_content += markdown_to_html(content)
 
     try:
         telegraph = Telegraph()
@@ -74,6 +129,7 @@ def crea_articolo_telegraph_with_content(
     except TelegraphException as e:
         print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
         return None
+
 
 # --- ESEMPIO DI UTILIZZO DEL NUOVO MODULO SUMMARIZER ---
 if __name__ == "__main__":
@@ -111,8 +167,8 @@ if __name__ == "__main__":
         summary_eli5 = summarize_article(
             article_content,
             summary_type="eli5_summary",
-            enable_enrichment=False, # Disabilitiamo l'arricchimento per questo esempio
-            include_hashtags=False # Disabilitiamo gli hashtag qui
+            enable_enrichment=False,  # Disabilitiamo l'arricchimento per questo esempio
+            include_hashtags=False,  # Disabilitiamo gli hashtag qui
         )
         if summary_eli5:
             print(f"\\n**RISULTATO:**\\n{summary_eli5}\\n")

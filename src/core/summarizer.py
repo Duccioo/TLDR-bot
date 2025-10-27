@@ -114,7 +114,7 @@ def _call_llm_api(
 def summarize_article(
     article: ArticleContent,
     summary_type: str,
-    prompts_dir: str = "src/bot/prompts",
+    prompts_dir: str = "src/prompts",
     use_web_search: bool = False,
     use_url_context: bool = False,
     model_name: str = "gemini-1.5-flash",
@@ -148,19 +148,27 @@ def summarize_article(
 
     # Chiama l'API LLM
     llm_response = _call_llm_api(prompt, model_name=model_name, tools=tools or None)
+    print("LLM response received, extracting summary...", flush=True)
     summary_text = llm_response["summary"]
     token_count = llm_response["token_count"]
+    print(f"Summary extracted, tokens: {token_count}", flush=True)
 
     # Incrementa il contatore delle richieste
     if "ERRORE:" not in summary_text:
+        print("Updating model usage...", flush=True)
         update_model_usage(model_name, token_count)
+        print("Model usage updated", flush=True)
 
     # Aggiungi hashtag solo se non ce ne sono già
+    print(f"Checking hashtags... (has tags: {bool(article.tags)})", flush=True)
     if "ERRORE:" not in summary_text and not article.tags:
+        print("Generating hashtags...", flush=True)
         hashtags = generate_hashtags(article, summary_text)
+        print(f"Hashtags generated: {hashtags[:50]}...", flush=True)
         if hashtags:
             summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
 
+    print("Returning summary data", flush=True)
     return {
         "summary": summary_text,
         "images": article.images,
