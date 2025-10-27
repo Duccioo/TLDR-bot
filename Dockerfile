@@ -10,7 +10,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia il resto del codice dell'applicazione
 COPY src/ ./src/
-COPY prompts/ ./prompts/
 
 # Imposta il comando per avviare il bot
 CMD ["python", "src/telegram_bot.py"]
