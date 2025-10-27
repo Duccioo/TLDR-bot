@@ -16,9 +16,10 @@ from telegram.ext import (
 )
 
 # Import functions from other modules
-from extractor import estrai_contenuto_da_url
-from summarizer import summarize_article
-from scraper import crea_articolo_telegraph_with_content
+from core.extractor import estrai_contenuto_da_url
+from core.summarizer import summarize_article
+from core.scraper import crea_articolo_telegraph_with_content
+from core.quota_manager import get_quota_summary
 
 # Load environment variables from .env file
 load_dotenv()
@@ -31,15 +32,20 @@ if not TELEGRAM_BOT_TOKEN:
     exit()
 
 # States for conversation
-CHOOSE_PROMPT = 1
+CHOOSE_PROMPT, CHOOSE_MODEL = 1, 2
 
 # Define the keyboard layout
 main_keyboard = [
-    ["Scegli Prompt", "Quota API Gemini"],
+    ["Scegli Prompt", "Cambia Modello"],
+    ["Quota API Gemini"],
 ]
 
+# Define available models
+models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+model_keyboard = [[model] for model in models]
+
 # Get available prompts
-prompt_files = [f.split(".")[0] for f in os.listdir("src/prompts") if f.endswith(".md")]
+prompt_files = [f.split(".")[0] for f in os.listdir("src/bot/prompts") if f.endswith(".md")]
 prompt_keyboard = [[prompt] for prompt in prompt_files]
 
 
@@ -47,22 +53,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message when the /start command is issued."""
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "Welcome to the summarizer bot! Send me a link to summarize.",
+        "<b>Benvenuto nel bot riassuntore!</b> Inviami un link per iniziare.",
         reply_markup=reply_markup,
+        parse_mode="HTML",
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a help message when the /help command is issued."""
     await update.message.reply_text(
-        "Send me a link to an article and I will summarize it for you. "
-        "You can also use the keyboard to choose a different prompt or check the API quota."
+        "Inviami un link a un articolo e io lo riassumerò per te.\n"
+        "Usa la tastiera per scegliere un prompt diverso o controllare le quote API.",
+        parse_mode="HTML",
     )
 
 async def choose_prompt_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Starts the conversation to choose a prompt."""
     reply_markup = ReplyKeyboardMarkup(prompt_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "Please choose a prompt for the summary:", reply_markup=reply_markup
+        "Scegli un prompt per il riassunto:", reply_markup=reply_markup, parse_mode="HTML"
     )
     return CHOOSE_PROMPT
 
@@ -71,7 +79,7 @@ async def prompt_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text
     context.user_data["prompt"] = prompt
     reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
-    await update.message.reply_text(f"Prompt set to: {prompt}", reply_markup=reply_markup)
+    await update.message.reply_text(f"Prompt impostato su: <b>{prompt}</b>", reply_markup=reply_markup, parse_mode="HTML")
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,38 +90,56 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends a message about the API quota."""
+async def choose_model_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts the conversation to choose a model."""
+    reply_markup = ReplyKeyboardMarkup(model_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "To check your Gemini API quota, please visit the Google AI Studio."
+        "Scegli un modello per il riassunto:", reply_markup=reply_markup, parse_mode="HTML"
     )
+    return CHOOSE_MODEL
+
+async def model_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stores the chosen model."""
+    model = update.message.text
+    context.user_data["model"] = model
+    reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
+    await update.message.reply_text(f"Modello impostato su: <b>{model}</b>", reply_markup=reply_markup, parse_mode="HTML")
+    return ConversationHandler.END
+
+async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sends a summary of the API quota usage."""
+    summary = get_quota_summary()
+    await update.message.reply_text(summary, parse_mode="HTML")
 
 async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
     url_pattern = r'https?://[^\s]+'
     match = re.search(url_pattern, update.message.text)
     if not match:
-        await update.message.reply_text("Please send a valid URL.")
+        await update.message.reply_text("Per favore, invia un URL valido.", parse_mode="HTML")
         return
 
     url = match.group(0)
-    await update.message.reply_text("Processing the URL...")
+    await update.message.reply_text("Elaborazione dell'URL in corso...", parse_mode="HTML")
 
     # Extract content
     article_content = estrai_contenuto_da_url(url)
     if not article_content:
-        await update.message.reply_text("Could not extract content from the URL.")
+        await update.message.reply_text("Impossibile estrarre il contenuto dall'URL.", parse_mode="HTML")
         return
+
+    # Get the chosen model or use the default
+    model_name = context.user_data.get("model", "gemini-1.5-flash")
 
     # Generate one-paragraph summary
     one_paragraph_summary = summarize_article(
-        article_content, summary_type="one_paragraph_summary"
+        article_content, summary_type="one_paragraph_summary", model_name=model_name
     )
 
     # Generate technical summary with the chosen prompt
     technical_summary_prompt = context.user_data.get("prompt", "technical_summary")
     technical_summary = summarize_article(
-        article_content, summary_type=technical_summary_prompt
+        article_content, summary_type=technical_summary_prompt, model_name=model_name
     )
 
     # Create Telegraph page with the technical summary
@@ -128,11 +154,12 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if one_paragraph_summary and telegraph_url:
         await update.message.reply_text(
-            f"Here is a summary:\n\n{one_paragraph_summary}\n\n"
-            f"Read the full summary here: {telegraph_url}"
+            f"<b>Ecco un riassunto:</b>\n\n{one_paragraph_summary}\n\n"
+            f"<a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
+            parse_mode="HTML",
         )
     else:
-        await update.message.reply_text("Could not generate the summary.")
+        await update.message.reply_text("Impossibile generare il riassunto.", parse_mode="HTML")
 
 
 def main():
@@ -144,14 +171,24 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
 
     # Add conversation handler for choosing a prompt
-    conv_handler = ConversationHandler(
+    prompt_conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^Scegli Prompt$"), choose_prompt_start)],
         states={
             CHOOSE_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_chosen)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
-    application.add_handler(conv_handler)
+    application.add_handler(prompt_conv_handler)
+
+    # Add conversation handler for choosing a model
+    model_conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^Cambia Modello$"), choose_model_start)],
+        states={
+            CHOOSE_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, model_chosen)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(model_conv_handler)
 
     # Add handler for API quota
     application.add_handler(MessageHandler(filters.Regex("^Quota API Gemini$"), api_quota))

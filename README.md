@@ -40,14 +40,19 @@ GEMINI_API_KEY=your_gemini_api_key_here
 ```
 TLDR-bot/
 ├── src/
-│   ├── extractor.py      # Funzioni di estrazione contenuti
-│   ├── scraper.py        # Pubblicazione su Telegra.ph
-│   ├── summarizer.py     # Generazione riassunti con Gemini
-│   ├── prompts/          # Template dei prompt
-│   └── README.md         # Documentazione dettagliata
-├── .env.example          # Template variabili d'ambiente
-├── requirements.txt      # Dipendenze Python
-└── README.md            # Questo file
+│   ├── core/
+│   │   ├── extractor.py      # Funzioni di estrazione contenuti
+│   │   ├── summarizer.py     # Generazione riassunti con Gemini
+│   │   └── scraper.py        # Pubblicazione su Telegra.ph
+│   ├── bot/
+│   │   ├── telegram_bot.py   # Logica del bot Telegram
+│   │   └── prompts/          # Template dei prompt
+│   └── data/
+│       └── quota.json        # Dati sulle quote API
+├── docs/                     # Documentazione dettagliata
+├── .env.example              # Template variabili d'ambiente
+├── requirements.txt          # Dipendenze Python
+└── README.md                 # Questo file
 ```
 
 ## 🎯 Utilizzo
@@ -55,7 +60,7 @@ TLDR-bot/
 ### Estrazione Contenuti
 
 ```python
-from src.extractor import estrai_come_markdown, estrai_contenuto_da_url
+from src.core.extractor import estrai_come_markdown, estrai_contenuto_da_url
 
 # Estrai in formato Markdown
 markdown = estrai_come_markdown("https://example.com/article")
@@ -71,8 +76,8 @@ print(f"Testo: {article.text}")
 ### Riassunti con AI
 
 ```python
-from src.extractor import estrai_contenuto_da_url
-from src.summarizer import summarize_article
+from src.core.extractor import estrai_contenuto_da_url
+from src.core.summarizer import summarize_article
 
 # Estrai l'articolo
 article = estrai_contenuto_da_url("https://example.com/article")
@@ -89,7 +94,7 @@ print(summary)
 ### Pubblicazione su Telegraph
 
 ```python
-from src.scraper import crea_articolo_telegraph
+from src.core.scraper import crea_articolo_telegraph
 
 # Pubblica direttamente da un URL
 telegraph_url = crea_articolo_telegraph(
@@ -109,7 +114,7 @@ print(f"Articolo pubblicato: {telegraph_url}")
 
 ### Personalizzazione Prompt
 
-I prompt per i riassunti si trovano in `src/prompts/`. Puoi creare i tuoi template usando variabili come:
+I prompt per i riassunti si trovano in `src/bot/prompts/`. Puoi creare i tuoi template usando variabili come:
 
 - `{{title}}` - Titolo dell'articolo
 - `{{text}}` - Testo completo
@@ -120,8 +125,7 @@ I prompt per i riassunti si trovano in `src/prompts/`. Puoi creare i tuoi templa
 
 ## 📖 Documentazione Completa
 
-Per la documentazione dettagliata di tutte le funzioni, consulta:
-- [src/README.md](src/README.md) - Documentazione API complete
+Per la documentazione dettagliata di tutte le funzioni, consulta la cartella [docs](docs/).
 
 ## 🛠️ Requisiti
 

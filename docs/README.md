@@ -1,21 +1,23 @@
-# TLDR-bot - Moduli di Scraping
+# TLDR-bot - Documentazione
 
-Questo progetto fornisce strumenti per estrarre contenuti da URL e pubblicarli su Telegra.ph.
+Questa documentazione descrive i moduli principali del progetto TLDR-bot.
 
-## Struttura
+## Struttura del Progetto
 
-- **`extractor.py`**: Funzioni per l'estrazione di contenuti da URL
-- **`scraper.py`**: Funzioni per la pubblicazione su Telegra.ph
-
-## Installazione
-
-Installa le dipendenze necessarie:
-
-```bash
-pip install trafilatura requests python-telegraph beautifulsoup4
+```
+src/
+├── core/
+│   ├── extractor.py      # Funzioni di estrazione contenuti
+│   ├── summarizer.py     # Generazione riassunti con Gemini
+│   └── scraper.py        # Pubblicazione su Telegra.ph
+├── bot/
+│   ├── telegram_bot.py   # Logica del bot Telegram
+│   └── prompts/          # Template dei prompt
+└── data/
+    └── quota.json        # Dati sulle quote API
 ```
 
-## Modulo `extractor.py`
+## Modulo `core/extractor.py`
 
 Il modulo `extractor` fornisce diverse funzioni per estrarre contenuti da URL.
 
@@ -26,7 +28,7 @@ Il modulo `extractor` fornisce diverse funzioni per estrarre contenuti da URL.
 Estrae il contenuto completo da un URL e restituisce un oggetto `ArticleContent`.
 
 ```python
-from extractor import estrai_contenuto_da_url
+from src.core.extractor import estrai_contenuto_da_url
 
 article = estrai_contenuto_da_url("https://example.com/article")
 if article:
@@ -52,7 +54,7 @@ if article:
 Estrae il contenuto e lo formatta in Markdown con metadati opzionali.
 
 ```python
-from extractor import estrai_come_markdown
+from src.core.extractor import estrai_come_markdown
 
 markdown = estrai_come_markdown("https://example.com/article")
 if markdown:
@@ -84,7 +86,7 @@ Il testo dell'articolo in formato Markdown...
 Estrae il contenuto in formato HTML pulito e validato.
 
 ```python
-from extractor import estrai_come_html
+from src.core.extractor import estrai_come_html
 
 html = estrai_come_html("https://example.com/article")
 if html:
@@ -96,7 +98,7 @@ if html:
 Estrae solo i metadati senza il contenuto completo (più veloce).
 
 ```python
-from extractor import estrai_metadati
+from src.core.extractor import estrai_metadati
 
 metadata = estrai_metadati("https://example.com/article")
 if metadata:
@@ -105,7 +107,7 @@ if metadata:
     print(f"Data: {metadata['date']}")
 ```
 
-## Modulo `scraper.py`
+## Modulo `core/scraper.py`
 
 Il modulo `scraper` utilizza le funzioni di `extractor` per pubblicare contenuti su Telegra.ph.
 
@@ -116,7 +118,7 @@ Il modulo `scraper` utilizza le funzioni di `extractor` per pubblicare contenuti
 Estrae il contenuto da un URL e lo pubblica su Telegra.ph.
 
 ```python
-from scraper import crea_articolo_telegraph
+from src.core.scraper import crea_articolo_telegraph
 
 url_telegraph = crea_articolo_telegraph(
     "https://example.com/article",
@@ -139,7 +141,7 @@ if url_telegraph:
 ### Esempio 1: Estrazione semplice in Markdown
 
 ```python
-from extractor import estrai_come_markdown
+from src.core.extractor import estrai_come_markdown
 
 urls = [
     "https://example.com/article1",
@@ -159,7 +161,7 @@ for url in urls:
 ### Esempio 2: Estrazione e analisi metadati
 
 ```python
-from extractor import estrai_metadati
+from src.core.extractor import estrai_metadati
 
 url = "https://example.com/article"
 metadata = estrai_metadati(url)
@@ -177,7 +179,7 @@ if metadata:
 ### Esempio 3: Pubblicazione batch su Telegra.ph
 
 ```python
-from scraper import crea_articolo_telegraph
+from src.core.scraper import crea_articolo_telegraph
 
 urls = [
     "https://example.com/article1",
@@ -204,7 +206,7 @@ for r in risultati:
 ### Esempio 4: Uso avanzato con ArticleContent
 
 ```python
-from extractor import estrai_contenuto_da_url
+from src.core.extractor import estrai_contenuto_da_url
 
 url = "https://example.com/article"
 article = estrai_contenuto_da_url(url)
@@ -230,14 +232,17 @@ if article:
 
 ## Test
 
-Entrambi i moduli includono esempi di test che possono essere eseguiti direttamente:
+I moduli principali includono esempi di test che possono essere eseguiti direttamente:
 
 ```bash
 # Test del modulo extractor
-python src/extractor.py
+python src/core/extractor.py
 
 # Test del modulo scraper
-python src/scraper.py
+python src/core/scraper.py
+
+# Test del modulo summarizer
+python src/core/summarizer.py
 ```
 
 ## Gestione Errori

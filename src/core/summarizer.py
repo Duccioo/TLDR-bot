@@ -9,7 +9,9 @@ from typing import Optional, List, Set
 from dotenv import load_dotenv
 
 # Importa le classi necessarie
-from extractor import ArticleContent
+from core.extractor import ArticleContent
+from core.rate_limiter import wait_for_rate_limit
+from core.quota_manager import increment_request_count
 import google.generativeai as genai
 
 # Carica le variabili d'ambiente dal file .env
@@ -111,10 +113,10 @@ def _call_llm_api(prompt: str, model_name: str = "gemini-1.5-flash") -> str:
 def summarize_article(
     article: ArticleContent,
     summary_type: str,
-    prompts_dir: str = "src/prompts",
+    prompts_dir: str = "src/bot/prompts",
     enable_enrichment: bool = True,
     include_hashtags: bool = True,
-    model_name: str = "gemini-2.5-flash-lite",
+    model_name: str = "gemini-1.5-flash",
 ) -> Optional[str]:
     prompt_path = os.path.join(prompts_dir, f"{summary_type}.md")
     if not os.path.exists(prompt_path):
@@ -138,8 +140,15 @@ def summarize_article(
     prompt = prompt.replace("{{url}}", article.url or "N/A")
     prompt = prompt.replace("{{sitename}}", article.sitename or "N/A")
 
+    # Attendi il rate limit
+    wait_for_rate_limit(model_name)
+
     # Chiama l'API LLM
     summary = _call_llm_api(prompt, model_name=model_name)
+
+    # Incrementa il contatore delle richieste se la chiamata ha avuto successo
+    if "ERRORE:" not in summary:
+        increment_request_count(model_name)
 
     # Aggiungi hashtag
     if include_hashtags and "ERRORE:" not in summary:
