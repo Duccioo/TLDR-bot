@@ -5,7 +5,7 @@ jobs:
     name: Build container
     runs-on: ubuntu-latest
     env:
-      DOCKER_IMAGE: duccioo/TLDR-bot
+      DOCKER_IMAGE: duccioo/tldr-bot
       DOCKER_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       DOCKER_TARGET_PLATFORM: linux
@@ -35,4 +35,4 @@ jobs:
       - name: Run Buildx (push image)
         if: success()
         run: |
-          docker buildx build --platform ${{ steps.prepare.outputs.docker_platform }} --tag duccioo/TLDR-bot:${{ steps.prepare.outputs.version }} --output type=image,push=true .
+          docker buildx build --platform ${{ steps.prepare.outputs.docker_platform }} --tag ${{ steps.prepare.outputs.docker_image }}:${{ steps.prepare.outputs.version }} --output type=image,push=true .
