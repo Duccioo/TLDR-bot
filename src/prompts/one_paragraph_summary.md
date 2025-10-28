@@ -10,7 +10,6 @@
     - Usa **grassetto** per evidenziare concetti chiave e termini importanti
     - Usa *corsivo* per enfatizzare parole o frasi significative
     - Usa __sottolineato__ per evidenziare informazioni cruciali
-    - Se ci sono link rilevanti nell'articolo, includili usando la sintassi [testo](url)
     - Combina le formattazioni quando appropriato (es: ***grassetto e corsivo***)
     - Mantieni il testo leggibile e non esagerare con la formattazione
 7.  **Aggiungi molte emoji contestuali:**
