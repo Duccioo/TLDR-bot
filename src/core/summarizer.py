@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 from core.extractor import ArticleContent
 from core.rate_limiter import wait_for_rate_limit
 from core.quota_manager import update_model_usage
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # Carica le variabili d'ambiente dal file .env
 load_dotenv()
@@ -49,14 +50,13 @@ def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
 
 
 # --- Funzione di chiamata all'LLM (Implementazione con Google Gemini) ---
-from google.generativeai import types as genai_types
 
 
 def _call_llm_api(
     system_instruction: str,
     user_prompt: str,
     model_name: str = "gemini-1.5-flash",
-    tools: Optional[List[genai_types.Tool]] = None,
+    tools: Optional[List[types.Tool]] = None,
 ) -> Dict[str, Any]:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
@@ -81,25 +81,26 @@ def _call_llm_api(
     try:
         print(f"\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---")
 
+        # Crea il client con il nuovo SDK
         client = genai.Client(api_key=api_key)
 
         # Prepara i contenuti dell'utente
         contents = [
-            genai_types.Content(
+            types.Content(
                 role="user",
                 parts=[
-                    genai_types.Part.from_text(text=user_prompt),
+                    types.Part.from_text(text=user_prompt),
                 ],
             ),
         ]
 
-        # Prepara la configurazione con system instruction e tools
-        generate_content_config = genai_types.GenerateContentConfig(
+        # Prepara la configurazione
+        generate_content_config = types.GenerateContentConfig(
             temperature=0.6,
             top_p=0.95,
             top_k=40,
             system_instruction=[
-                genai_types.Part.from_text(text=system_instruction),
+                types.Part.from_text(text=system_instruction),
             ],
         )
 
@@ -114,10 +115,22 @@ def _call_llm_api(
             config=generate_content_config,
         )
 
-        token_count = response.usage_metadata.total_token_count
+        # Estrai il testo e il conteggio dei token
+        summary_text = ""
+        if hasattr(response, "text"):
+            summary_text = response.text
+        elif hasattr(response, "candidates") and response.candidates:
+            # Estrai il testo dal primo candidato
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text"):
+                    summary_text += part.text
+
+        token_count = 0
+        if hasattr(response, "usage_metadata"):
+            token_count = response.usage_metadata.total_token_count
 
         print("--- Chiamata API completata con successo! ---")
-        return {"summary": response.text.strip(), "token_count": token_count}
+        return {"summary": summary_text.strip(), "token_count": token_count}
 
     except Exception as e:
         print(f"--- ERRORE durante la chiamata all'API di Google Gemini: {e} ---")
@@ -172,7 +185,8 @@ def summarize_article(
     # Configura i tool di Gemini
     tools = []
     if use_web_search:
-        tools.append(genai_types.Tool(googleSearch=genai_types.GoogleSearch()))
+        # Usa il nuovo formato del SDK google-genai
+        tools.append(types.Tool(googleSearch=types.GoogleSearch()))
     if use_url_context and article.url:
         user_prompt = f"Basandoti sul contenuto dell'URL {article.url}, {user_prompt}"
 

@@ -3,5 +3,6 @@ requests
 telegraph
 beautifulsoup4
 python-dotenv
-google-generativeai
+google-genai
 python-telegram-bot
+packaging

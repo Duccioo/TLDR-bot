@@ -10,7 +10,28 @@
             "requests_per_minute": 10,
             "tokens_per_minute": 250000,
             "requests_per_day": 250,
-            "usage_timestamps": []
+            "usage_timestamps": [
+                {
+                    "timestamp": "2025-10-28T10:01:37.680963",
+                    "tokens": 3707
+                },
+                {
+                    "timestamp": "2025-10-28T10:02:19.089775",
+                    "tokens": 5007
+                },
+                {
+                    "timestamp": "2025-10-28T10:05:18.412371",
+                    "tokens": 3958
+                },
+                {
+                    "timestamp": "2025-10-28T10:05:41.224942",
+                    "tokens": 4078
+                },
+                {
+                    "timestamp": "2025-10-28T10:11:18.215043",
+                    "tokens": 3303
+                }
+            ]
         },
         "gemini-2.5-flash-preview": {
             "requests_per_minute": 10,
@@ -22,7 +43,16 @@
             "requests_per_minute": 15,
             "tokens_per_minute": 250000,
             "requests_per_day": 1000,
-            "usage_timestamps": []
+            "usage_timestamps": [
+                {
+                    "timestamp": "2025-10-28T10:08:58.753010",
+                    "tokens": 1788
+                },
+                {
+                    "timestamp": "2025-10-28T10:09:24.341479",
+                    "tokens": 2285
+                }
+            ]
         },
         "gemini-2.5-flash-lite-preview": {
             "requests_per_minute": 15,

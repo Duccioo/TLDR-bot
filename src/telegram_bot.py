@@ -157,6 +157,39 @@ def sanitize_html_for_telegram(text):
     return sanitized
 
 
+def format_summary_text(text):
+    """
+    Formatta il testo del riassunto per renderlo più leggibile,
+    aggiungendo a capo dopo ogni frase.
+    """
+    if not text:
+        return text
+
+    # Dividi il testo in frasi usando . ! ? come delimitatori
+    # Mantieni il delimitatore e aggiungi uno spazio
+    print("Formatting summary text for better readability...", flush=True)
+    print(text)
+    print("--- End of original text ---", flush=True)
+
+    sentences = re.split(r"([.!?])\s+", text)
+
+    # Ricombina le frasi con i loro delimitatori
+    formatted_sentences = []
+    for i in range(0, len(sentences) - 1, 2):
+        if i + 1 < len(sentences):
+            sentence = sentences[i] + sentences[i + 1]
+            formatted_sentences.append(sentence.strip())
+
+    # Se c'è un'ultima frase senza delimitatore
+    if len(sentences) % 2 != 0:
+        formatted_sentences.append(sentences[-1].strip())
+
+    # Unisci le frasi con doppio a capo per una migliore leggibilità
+    print("Formatted summary text:", flush=True)
+    print("\n\n".join(formatted_sentences), flush=True)
+    return "\n\n".join(formatted_sentences)
+
+
 # Define available models from quota.json
 models = load_available_models()
 model_keyboard = [[model] for model in models]
@@ -356,15 +389,33 @@ async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @authorized
 async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
-    url_pattern = r"https?://[^\s]+"
-    match = re.search(url_pattern, update.message.text)
-    if not match:
+    url = None
+
+    # Prima prova a estrarre URL dalle entities (link embeddati)
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "url":
+                # Estrai l'URL dal testo usando offset e length
+                url = update.message.text[entity.offset : entity.offset + entity.length]
+                break
+            elif entity.type == "text_link":
+                # Link embeddato con testo personalizzato
+                url = entity.url
+                break
+
+    # Se non trovato nelle entities, cerca nel testo con regex
+    if not url:
+        url_pattern = r"https?://[^\s]+"
+        match = re.search(url_pattern, update.message.text)
+        if match:
+            url = match.group(0)
+
+    # Se ancora nessun URL trovato, mostra errore
+    if not url:
         await update.message.reply_text(
             "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
         )
         return
-
-    url = match.group(0)
     processing_message = await update.message.reply_text(
         "⏳ Elaborazione dell'URL in corso...", parse_mode="HTML"
     )
@@ -422,6 +473,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     one_paragraph_summary = one_paragraph_summary_data.get("summary")
     context.user_data["one_paragraph_summary"] = one_paragraph_summary
 
+    # Formatta il riassunto per renderlo più leggibile
+    formatted_summary = format_summary_text(one_paragraph_summary)
+
     # Scegli un emoji casuale per il titolo
     random_emoji = random.choice(TITLE_EMOJIS)
     article_title = article_content.title or "Articolo"
@@ -436,7 +490,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     # Formatta il messaggio con titolo e emoji casuale
-    message_text = f"{random_emoji} *{article_title}*\n\n{one_paragraph_summary}"
+    message_text = f"{random_emoji} *{article_title}*\n\n{formatted_summary}"
 
     await context.bot.edit_message_text(
         chat_id=update.effective_chat.id,
@@ -513,10 +567,13 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
     random_emoji = random.choice(TITLE_EMOJIS)
     article_title = article_content.title or "Articolo"
 
+    # Formatta il riassunto per renderlo più leggibile
+    formatted_summary = format_summary_text(one_paragraph_summary)
+
     # Formatta il messaggio con titolo, emoji e link a Telegraph
     message_text = (
         f"{random_emoji} *{article_title}*\n\n"
-        f"{one_paragraph_summary}\n\n"
+        f"{formatted_summary}\n\n"
         f"📄 [Leggi il riassunto completo qui]({telegraph_url})"
     )
 
