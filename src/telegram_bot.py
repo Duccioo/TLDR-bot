@@ -8,6 +8,7 @@ import json
 import sys
 import signal
 import random
+import asyncio
 from functools import wraps
 from dotenv import load_dotenv
 from telegram import (
@@ -157,37 +158,18 @@ def sanitize_html_for_telegram(text):
     return sanitized
 
 
-def format_summary_text(text):
+def format_summary_text(text: str) -> str:
     """
     Formatta il testo del riassunto per renderlo più leggibile,
-    aggiungendo a capo dopo ogni frase.
+    aggiungendo a capo dopo ogni frase in modo più robusto.
     """
     if not text:
         return text
 
-    # Dividi il testo in frasi usando . ! ? come delimitatori
-    # Mantieni il delimitatore e aggiungi uno spazio
-    print("Formatting summary text for better readability...", flush=True)
-    print(text)
-    print("--- End of original text ---", flush=True)
-
-    sentences = re.split(r"([.!?])\s+", text)
-
-    # Ricombina le frasi con i loro delimitatori
-    formatted_sentences = []
-    for i in range(0, len(sentences) - 1, 2):
-        if i + 1 < len(sentences):
-            sentence = sentences[i] + sentences[i + 1]
-            formatted_sentences.append(sentence.strip())
-
-    # Se c'è un'ultima frase senza delimitatore
-    if len(sentences) % 2 != 0:
-        formatted_sentences.append(sentences[-1].strip())
-
-    # Unisci le frasi con doppio a capo per una migliore leggibilità
-    print("Formatted summary text:", flush=True)
-    print("\n\n".join(formatted_sentences), flush=True)
-    return "\n\n".join(formatted_sentences)
+    # Sostituisce i punti e altri segni di punteggiatura con se stessi seguiti da a capo
+    # per una migliore leggibilità, senza spezzare abbreviazioni.
+    text = re.sub(r"([.!?])\s+", r"\1\n\n", text)
+    return text.strip()
 
 
 # Define available models from quota.json
@@ -386,62 +368,85 @@ async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def animate_loading_message(context, chat_id, message_id, stop_event):
+    """Animates a loading message with dots."""
+    base_text = "Elaborazione in corso"
+    dots = ""
+    while not stop_event.is_set():
+        dots = "..." if len(dots) == 2 else "." * ((len(dots) + 1) % 3)
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"{base_text}{dots} ⏳",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            # If the message is deleted, stop the animation
+            if "Message to edit not found" in str(e):
+                break
+            print(f"Error animating message: {e}")
+        await asyncio.sleep(1)
+
+
 @authorized
 async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
     url = None
 
-    # Prima prova a estrarre URL dalle entities (link embeddati)
+    # First, try to extract URL from entities (embedded links)
     if update.message.entities:
         for entity in update.message.entities:
             if entity.type == "url":
-                # Estrai l'URL dal testo usando offset e length
                 url = update.message.text[entity.offset : entity.offset + entity.length]
                 break
             elif entity.type == "text_link":
-                # Link embeddato con testo personalizzato
                 url = entity.url
                 break
 
-    # Se non trovato nelle entities, cerca nel testo con regex
+    # If not found in entities, search in text with regex
     if not url:
         url_pattern = r"https?://[^\s]+"
         match = re.search(url_pattern, update.message.text)
         if match:
             url = match.group(0)
 
-    # Se ancora nessun URL trovato, mostra errore
     if not url:
         await update.message.reply_text(
             "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
         )
         return
+
     processing_message = await update.message.reply_text(
         "⏳ Elaborazione dell'URL in corso...", parse_mode="HTML"
     )
-
-    # Extract content
-    article_content = estrai_contenuto_da_url(url)
-    if not article_content:
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_message.message_id,
-            text="😥 Impossibile estrarre il contenuto dall'URL.",
-            parse_mode="HTML",
+    stop_animation_event = asyncio.Event()
+    animation_task = asyncio.create_task(
+        animate_loading_message(
+            context,
+            update.effective_chat.id,
+            processing_message.message_id,
+            stop_animation_event,
         )
-        return
+    )
 
-    # Store article content in user_data
-    context.user_data["article_content"] = article_content
-
-    # Get user choices from context
-    model_name = context.user_data.get("model", "gemini-2.5-flash")
-    use_web_search = context.user_data.get("web_search", False)
-    use_url_context = context.user_data.get("url_context", False)
-
-    # Generate one-paragraph summary
     try:
-        print("Generating one paragraph summary...", flush=True)
+        # Extract content
+        article_content = estrai_contenuto_da_url(url)
+        if not article_content:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_message.message_id,
+                text="😥 Impossibile estrarre il contenuto dall'URL.",
+                parse_mode="HTML",
+            )
+            return
+
+        context.user_data["article_content"] = article_content
+        model_name = context.user_data.get("model", "gemini-2.5-flash")
+        use_web_search = context.user_data.get("web_search", False)
+        use_url_context = context.user_data.get("url_context", False)
+
         one_paragraph_summary_data = summarize_article(
             article_content,
             summary_type="one_paragraph_summary",
@@ -449,56 +454,45 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             use_web_search=use_web_search,
             use_url_context=use_url_context,
         )
-        print("One paragraph summary done!", flush=True)
+
+        if not one_paragraph_summary_data:
+            raise ValueError("Impossibile generare il riassunto.")
+
+        one_paragraph_summary = one_paragraph_summary_data.get("summary")
+        context.user_data["one_paragraph_summary"] = one_paragraph_summary
+        formatted_summary = format_summary_text(one_paragraph_summary)
+        random_emoji = random.choice(TITLE_EMOJIS)
+        article_title = article_content.title or "Articolo"
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "📄 Crea pagina Telegraph", callback_data="create_telegraph_page"
+                )
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message_text = f"{random_emoji} *{article_title}*\n\n{formatted_summary}\n\n_Riassunto generato con {model_name}_"
+
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_message.message_id,
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown",
+        )
+
     except Exception as e:
         print(f"Error during summarization: {e}", flush=True)
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
             message_id=processing_message.message_id,
-            text="🤖 Si è verificato un errore durante la generazione del riassunto.",
+            text=f"🤖 ERRORE: Impossibile completare la richiesta.\nDettagli: {e}",
             parse_mode="HTML",
         )
-        return
-
-    if not one_paragraph_summary_data:
-        print("Summary data is None!", flush=True)
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_message.message_id,
-            text="😥 Impossibile generare il riassunto. Verifica che i file prompt esistano.",
-            parse_mode="HTML",
-        )
-        return
-
-    one_paragraph_summary = one_paragraph_summary_data.get("summary")
-    context.user_data["one_paragraph_summary"] = one_paragraph_summary
-
-    # Formatta il riassunto per renderlo più leggibile
-    formatted_summary = format_summary_text(one_paragraph_summary)
-
-    # Scegli un emoji casuale per il titolo
-    random_emoji = random.choice(TITLE_EMOJIS)
-    article_title = article_content.title or "Articolo"
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "📄 Crea pagina Telegraph", callback_data="create_telegraph_page"
-            )
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Formatta il messaggio con titolo e emoji casuale
-    message_text = f"{random_emoji} *{article_title}*\n\n{formatted_summary}"
-
-    await context.bot.edit_message_text(
-        chat_id=update.effective_chat.id,
-        message_id=processing_message.message_id,
-        text=message_text,
-        reply_markup=reply_markup,
-        parse_mode="Markdown",
-    )
+    finally:
+        stop_animation_event.set()
+        await animation_task
 
 
 async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -506,26 +500,33 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
 
-    article_content = context.user_data.get("article_content")
-    one_paragraph_summary = context.user_data.get("one_paragraph_summary")
-
-    if not article_content or not one_paragraph_summary:
-        await context.bot.edit_message_text(
-            chat_id=query.message.chat_id,
-            message_id=query.message.message_id,
-            text="😥 Impossibile trovare i dati del riassunto. Riprova.",
-            parse_mode="HTML",
+    processing_message = await query.message.reply_text(
+        "⏳ Generazione della pagina Telegraph in corso...", parse_mode="HTML"
+    )
+    stop_animation_event = asyncio.Event()
+    animation_task = asyncio.create_task(
+        animate_loading_message(
+            context,
+            query.message.chat_id,
+            processing_message.message_id,
+            stop_animation_event,
         )
-        return
-
-    # Get user choices from context
-    model_name = context.user_data.get("model", "gemini-2.5-flash")
-    use_web_search = context.user_data.get("web_search", False)
-    use_url_context = context.user_data.get("url_context", False)
-    technical_summary_prompt = context.user_data.get("prompt", "technical_summary")
+    )
 
     try:
-        print("Generating technical summary...", flush=True)
+        article_content = context.user_data.get("article_content")
+        one_paragraph_summary = context.user_data.get("one_paragraph_summary")
+
+        if not article_content or not one_paragraph_summary:
+            raise ValueError("Impossibile trovare i dati del riassunto.")
+
+        model_name = context.user_data.get("model", "gemini-2.5-flash")
+        use_web_search = context.user_data.get("web_search", False)
+        use_url_context = context.user_data.get("url_context", False)
+        technical_summary_prompt = context.user_data.get(
+            "prompt", "technical_summary"
+        )
+
         technical_summary_data = summarize_article(
             article_content,
             summary_type=technical_summary_prompt,
@@ -533,56 +534,51 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             use_web_search=use_web_search,
             use_url_context=use_url_context,
         )
-        print("Technical summary done!", flush=True)
+
+        if not technical_summary_data:
+            raise ValueError("Impossibile generare il riassunto completo.")
+
+        technical_summary = technical_summary_data.get("summary")
+        image_urls = technical_summary_data.get("images")
+
+        telegraph_url = crea_articolo_telegraph_with_content(
+            title=article_content.title or "Summary",
+            content=technical_summary,
+            author_name=article_content.author or "Summarizer Bot",
+            image_urls=image_urls,
+        )
+
+        random_emoji = random.choice(TITLE_EMOJIS)
+        article_title = article_content.title or "Articolo"
+        formatted_summary = format_summary_text(one_paragraph_summary)
+        message_text = (
+            f"{random_emoji} *{article_title}*\n\n"
+            f"{formatted_summary}\n\n"
+            f"📄 [Leggi il riassunto completo qui]({telegraph_url})\n\n"
+            f"_Riassunto generato con {model_name}_"
+        )
+
+        await context.bot.edit_message_text(
+            chat_id=query.message.chat_id,
+            message_id=query.message.message_id,
+            text=message_text,
+            parse_mode="Markdown",
+        )
+        await context.bot.delete_message(
+            chat_id=query.message.chat_id, message_id=processing_message.message_id
+        )
+
     except Exception as e:
-        print(f"Error during summarization: {e}", flush=True)
+        print(f"Error generating Telegraph page: {e}", flush=True)
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
-            message_id=query.message.message_id,
-            text="🤖 Si è verificato un errore durante la generazione del riassunto.",
+            message_id=processing_message.message_id,
+            text=f"🤖 ERRORE: Impossibile creare la pagina Telegraph.\nDettagli: {e}",
             parse_mode="HTML",
         )
-        return
-
-    if not technical_summary_data:
-        await context.bot.edit_message_text(
-            chat_id=query.message.chat_id,
-            message_id=query.message.message_id,
-            text="😥 Impossibile generare il riassunto completo.",
-            parse_mode="HTML",
-        )
-        return
-
-    technical_summary = technical_summary_data.get("summary")
-    image_urls = technical_summary_data.get("images")
-
-    telegraph_url = crea_articolo_telegraph_with_content(
-        title=article_content.title or "Summary",
-        content=technical_summary,
-        author_name=article_content.author or "Summarizer Bot",
-        image_urls=image_urls,
-    )
-
-    # Scegli un emoji casuale per il titolo
-    random_emoji = random.choice(TITLE_EMOJIS)
-    article_title = article_content.title or "Articolo"
-
-    # Formatta il riassunto per renderlo più leggibile
-    formatted_summary = format_summary_text(one_paragraph_summary)
-
-    # Formatta il messaggio con titolo, emoji e link a Telegraph
-    message_text = (
-        f"{random_emoji} *{article_title}*\n\n"
-        f"{formatted_summary}\n\n"
-        f"📄 [Leggi il riassunto completo qui]({telegraph_url})"
-    )
-
-    await context.bot.edit_message_text(
-        chat_id=query.message.chat_id,
-        message_id=query.message.message_id,
-        text=message_text,
-        parse_mode="Markdown",
-    )
+    finally:
+        stop_animation_event.set()
+        await animation_task
 
 
 def signal_handler(sig, frame):
