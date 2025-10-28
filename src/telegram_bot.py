@@ -369,16 +369,20 @@ async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def animate_loading_message(context, chat_id, message_id, stop_event):
-    """Animates a loading message with dots."""
+    """Animates a loading message with dots and clock emojis."""
     base_text = "Elaborazione in corso"
     dots = ""
+    clock_emojis = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"]
+    emoji_index = 0
     while not stop_event.is_set():
-        dots = "..." if len(dots) == 2 else "." * ((len(dots) + 1) % 3)
+        dots = "." * ((len(dots) + 1) % 4)
+        emoji = clock_emojis[emoji_index]
+        emoji_index = (emoji_index + 1) % len(clock_emojis)
         try:
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"{base_text}{dots} ⏳",
+                text=f"{base_text}{dots} {emoji}",
                 parse_mode="HTML",
             )
         except Exception as e:
@@ -386,7 +390,7 @@ async def animate_loading_message(context, chat_id, message_id, stop_event):
             if "Message to edit not found" in str(e):
                 break
             print(f"Error animating message: {e}")
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
 
 @authorized
@@ -434,6 +438,8 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Extract content
         article_content = estrai_contenuto_da_url(url)
         if not article_content:
+            stop_animation_event.set()
+            await animation_task
             await context.bot.edit_message_text(
                 chat_id=update.effective_chat.id,
                 message_id=processing_message.message_id,
@@ -474,6 +480,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         message_text = f"{random_emoji} *{article_title}*\n\n{formatted_summary}\n\n_Riassunto generato con {model_name}_"
 
+        stop_animation_event.set()
+        await animation_task
+
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
             message_id=processing_message.message_id,
@@ -483,6 +492,8 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
+        stop_animation_event.set()
+        await animation_task
         print(f"Error during summarization: {e}", flush=True)
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
@@ -490,9 +501,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"🤖 ERRORE: Impossibile completare la richiesta.\nDettagli: {e}",
             parse_mode="HTML",
         )
-    finally:
-        stop_animation_event.set()
-        await animation_task
 
 
 async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -558,6 +566,9 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             f"_Riassunto generato con {model_name}_"
         )
 
+        stop_animation_event.set()
+        await animation_task
+
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
             message_id=query.message.message_id,
@@ -569,6 +580,8 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         )
 
     except Exception as e:
+        stop_animation_event.set()
+        await animation_task
         print(f"Error generating Telegraph page: {e}", flush=True)
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
@@ -576,9 +589,6 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             text=f"🤖 ERRORE: Impossibile creare la pagina Telegraph.\nDettagli: {e}",
             parse_mode="HTML",
         )
-    finally:
-        stop_animation_event.set()
-        await animation_task
 
 
 def signal_handler(sig, frame):
