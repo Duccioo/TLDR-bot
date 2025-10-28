@@ -9,7 +9,7 @@ import sys
 import signal
 from functools import wraps
 from dotenv import load_dotenv
-from telegram import ReplyKeyboardMarkup, Update, ReplyKeyboardRemove
+from telegram import ReplyKeyboardMarkup, Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -17,6 +17,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ConversationHandler,
+    CallbackQueryHandler,
 )
 
 # Import functions from other modules
@@ -323,25 +324,30 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     url = match.group(0)
-    await update.message.reply_text(
+    processing_message = await update.message.reply_text(
         "⏳ Elaborazione dell'URL in corso...", parse_mode="HTML"
     )
 
     # Extract content
     article_content = estrai_contenuto_da_url(url)
     if not article_content:
-        await update.message.reply_text(
-            "😥 Impossibile estrarre il contenuto dall'URL.", parse_mode="HTML"
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_message.message_id,
+            text="😥 Impossibile estrarre il contenuto dall'URL.",
+            parse_mode="HTML",
         )
         return
+
+    # Store article content in user_data
+    context.user_data["article_content"] = article_content
 
     # Get user choices from context
     model_name = context.user_data.get("model", "gemini-2.5-flash")
     use_web_search = context.user_data.get("web_search", False)
     use_url_context = context.user_data.get("url_context", False)
-    technical_summary_prompt = context.user_data.get("prompt", "technical_summary")
 
-    # Generate summaries
+    # Generate one-paragraph summary
     try:
         print("Generating one paragraph summary...", flush=True)
         one_paragraph_summary_data = summarize_article(
@@ -352,7 +358,74 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             use_url_context=use_url_context,
         )
         print("One paragraph summary done!", flush=True)
+    except Exception as e:
+        print(f"Error during summarization: {e}", flush=True)
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_message.message_id,
+            text="🤖 Si è verificato un errore durante la generazione del riassunto.",
+            parse_mode="HTML",
+        )
+        return
 
+    if not one_paragraph_summary_data:
+        print("Summary data is None!", flush=True)
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_message.message_id,
+            text="😥 Impossibile generare il riassunto. Verifica che i file prompt esistano.",
+            parse_mode="HTML",
+        )
+        return
+
+    one_paragraph_summary = one_paragraph_summary_data.get("summary")
+    context.user_data["one_paragraph_summary"] = one_paragraph_summary
+    sanitized_summary = sanitize_html_for_telegram(one_paragraph_summary)
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📄 Crea pagina Telegraph", callback_data="create_telegraph_page"
+            )
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=processing_message.message_id,
+        text=f"📰 <b>Ecco un riassunto:</b>\n\n{sanitized_summary}",
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+    )
+
+
+async def generate_telegraph_page(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """Creates a Telegraph page with the full summary."""
+    query = update.callback_query
+    await query.answer()
+
+    article_content = context.user_data.get("article_content")
+    one_paragraph_summary = context.user_data.get("one_paragraph_summary")
+
+    if not article_content or not one_paragraph_summary:
+        await context.bot.edit_message_text(
+            chat_id=query.message.chat_id,
+            message_id=query.message.message_id,
+            text="😥 Impossibile trovare i dati del riassunto. Riprova.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Get user choices from context
+    model_name = context.user_data.get("model", "gemini-2.5-flash")
+    use_web_search = context.user_data.get("web_search", False)
+    use_url_context = context.user_data.get("url_context", False)
+    technical_summary_prompt = context.user_data.get("prompt", "technical_summary")
+
+    try:
         print("Generating technical summary...", flush=True)
         technical_summary_data = summarize_article(
             article_content,
@@ -364,63 +437,41 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Technical summary done!", flush=True)
     except Exception as e:
         print(f"Error during summarization: {e}", flush=True)
-        await update.message.reply_text(
-            "🤖 Si è verificato un errore durante la generazione del riassunto.",
+        await context.bot.edit_message_text(
+            chat_id=query.message.chat_id,
+            message_id=query.message.message_id,
+            text="🤖 Si è verificato un errore durante la generazione del riassunto.",
             parse_mode="HTML",
         )
         return
 
-    print("Checking summary data...", flush=True)
-    if not one_paragraph_summary_data or not technical_summary_data:
-        print("Summary data is None!", flush=True)
-        await update.message.reply_text(
-            "😥 Impossibile generare il riassunto. Verifica che i file prompt esistano.",
+    if not technical_summary_data:
+        await context.bot.edit_message_text(
+            chat_id=query.message.chat_id,
+            message_id=query.message.message_id,
+            text="😥 Impossibile generare il riassunto completo.",
             parse_mode="HTML",
         )
         return
 
-    one_paragraph_summary = one_paragraph_summary_data.get("summary")
     technical_summary = technical_summary_data.get("summary")
     image_urls = technical_summary_data.get("images")
 
-    print(f"One paragraph summary: {bool(one_paragraph_summary)}", flush=True)
-    print(f"Technical summary: {bool(technical_summary)}", flush=True)
-    print(f"Image URLs: {image_urls}")
-
-    # Create Telegraph page
-    if technical_summary:
-        print("Creating Telegraph page...")
-        telegraph_url = crea_articolo_telegraph_with_content(
-            title=article_content.title or "Summary",
-            content=technical_summary,
-            author_name=article_content.author or "Summarizer Bot",
-            image_urls=image_urls,
-        )
-        print(f"Telegraph URL: {telegraph_url}")
-    else:
-        print("No technical summary, skipping Telegraph page creation")
-        telegraph_url = None
-
-    print(
-        f"Checking conditions: one_paragraph={bool(one_paragraph_summary)}, telegraph={bool(telegraph_url)}"
+    telegraph_url = crea_articolo_telegraph_with_content(
+        title=article_content.title or "Summary",
+        content=technical_summary,
+        author_name=article_content.author or "Summarizer Bot",
+        image_urls=image_urls,
     )
 
-    if one_paragraph_summary and telegraph_url:
-        print("Sending complete summary...")
-        # Sanitize the summary to remove unsupported HTML tags
-        sanitized_summary = sanitize_html_for_telegram(one_paragraph_summary)
-        await update.message.reply_text(
-            f"📰 <b>Ecco un riassunto:</b>\n\n{sanitized_summary}\n\n"
-            f"📄 <a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
-            parse_mode="HTML",
-        )
-        print("Summary sent successfully!")
-    else:
-        print("Sending error message...")
-        await update.message.reply_text(
-            "😥 Impossibile generare il riassunto.", parse_mode="HTML"
-        )
-        print("Error message sent")
+    sanitized_summary = sanitize_html_for_telegram(one_paragraph_summary)
+    await context.bot.edit_message_text(
+        chat_id=query.message.chat_id,
+        message_id=query.message.message_id,
+        text=f"📰 <b>Ecco un riassunto:</b>\n\n{sanitized_summary}\n\n"
+        f"📄 <a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
+        parse_mode="HTML",
+    )
 
 
 def signal_handler(sig, frame):
@@ -501,6 +552,9 @@ def main():
     # on non command i.e message - summarize the URL
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, summarize_url)
+    )
+    application.add_handler(
+        CallbackQueryHandler(generate_telegraph_page, pattern="^create_telegraph_page$")
     )
 
     # Run the bot until the user presses Ctrl-C
