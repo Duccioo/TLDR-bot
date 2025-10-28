@@ -7,9 +7,16 @@ import re
 import json
 import sys
 import signal
+import random
 from functools import wraps
 from dotenv import load_dotenv
-from telegram import ReplyKeyboardMarkup, Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    ReplyKeyboardMarkup,
+    Update,
+    ReplyKeyboardRemove,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -50,6 +57,40 @@ main_keyboard = [
     ["📝 Scegli Prompt", "🤖 Cambia Modello"],
     ["🌐 Web Search On/Off", "🔗 URL Context On/Off"],
     ["📊 Quota API Gemini"],
+]
+
+# Lista di emoji casuali per i titoli degli articoli
+TITLE_EMOJIS = [
+    "📰",
+    "📄",
+    "📃",
+    "📑",
+    "📚",
+    "📖",
+    "📝",
+    "✍️",
+    "📌",
+    "🔖",
+    "💡",
+    "🌟",
+    "⭐",
+    "✨",
+    "🎯",
+    "🎓",
+    "🧠",
+    "💭",
+    "🔍",
+    "🔎",
+    "🚀",
+    "🎨",
+    "🎭",
+    "🎪",
+    "🎬",
+    "🎵",
+    "🎸",
+    "🏆",
+    "🎁",
+    "🎉",
 ]
 
 
@@ -380,7 +421,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     one_paragraph_summary = one_paragraph_summary_data.get("summary")
     context.user_data["one_paragraph_summary"] = one_paragraph_summary
-    sanitized_summary = sanitize_html_for_telegram(one_paragraph_summary)
+
+    # Scegli un emoji casuale per il titolo
+    random_emoji = random.choice(TITLE_EMOJIS)
+    article_title = article_content.title or "Articolo"
 
     keyboard = [
         [
@@ -391,18 +435,19 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Formatta il messaggio con titolo e emoji casuale
+    message_text = f"{random_emoji} *{article_title}*\n\n{one_paragraph_summary}"
+
     await context.bot.edit_message_text(
         chat_id=update.effective_chat.id,
         message_id=processing_message.message_id,
-        text=f"📰 <b>Ecco un riassunto:</b>\n\n{sanitized_summary}",
+        text=message_text,
         reply_markup=reply_markup,
-        parse_mode="HTML",
+        parse_mode="Markdown",
     )
 
 
-async def generate_telegraph_page(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Creates a Telegraph page with the full summary."""
     query = update.callback_query
     await query.answer()
@@ -464,13 +509,22 @@ async def generate_telegraph_page(
         image_urls=image_urls,
     )
 
-    sanitized_summary = sanitize_html_for_telegram(one_paragraph_summary)
+    # Scegli un emoji casuale per il titolo
+    random_emoji = random.choice(TITLE_EMOJIS)
+    article_title = article_content.title or "Articolo"
+
+    # Formatta il messaggio con titolo, emoji e link a Telegraph
+    message_text = (
+        f"{random_emoji} *{article_title}*\n\n"
+        f"{one_paragraph_summary}\n\n"
+        f"📄 [Leggi il riassunto completo qui]({telegraph_url})"
+    )
+
     await context.bot.edit_message_text(
         chat_id=query.message.chat_id,
         message_id=query.message.message_id,
-        text=f"📰 <b>Ecco un riassunto:</b>\n\n{sanitized_summary}\n\n"
-        f"📄 <a href='{telegraph_url}'>Leggi il riassunto completo qui</a>",
-        parse_mode="HTML",
+        text=message_text,
+        parse_mode="Markdown",
     )
 
 
@@ -487,6 +541,7 @@ def main():
 
     # Inizializza il file quota.json se non esiste
     from core.quota_manager import get_quota_data
+
     print("🔍 Verifica esistenza file quota.json...")
     get_quota_data()  # Questo creerà il file se non esiste
 

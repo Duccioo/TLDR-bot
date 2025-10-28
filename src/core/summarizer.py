@@ -18,13 +18,6 @@ import google.generativeai as genai
 load_dotenv()
 
 
-# --- Funzioni di arricchimento (Placeholder) ---
-# (Queste funzioni rimangono invariate)
-def _enrich_with_web_search(query: str) -> Optional[str]:
-    print(f"\\n--- Arricchimento: Ricerca web simulata per '{query}' ---")
-    return f"Secondo una ricerca web simulata, l'argomento '{query}' è di grande attualità."
-
-
 def _extract_keywords(text: str) -> List[str]:
     print("\\n--- Arricchimento: Estrazione parole chiave simulata ---")
     base_keywords = ["tecnologia", "innovazione", "sostenibilità"]
@@ -60,7 +53,8 @@ from google.generativeai import types as genai_types
 
 
 def _call_llm_api(
-    prompt: str,
+    system_instruction: str,
+    user_prompt: str,
     model_name: str = "gemini-1.5-flash",
     tools: Optional[List[genai_types.Tool]] = None,
 ) -> Dict[str, Any]:
@@ -68,7 +62,8 @@ def _call_llm_api(
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
 
     Args:
-        prompt: Il prompt completo da inviare al modello.
+        system_instruction: Le istruzioni di sistema per il modello (ruolo e comportamento).
+        user_prompt: Il prompt dell'utente con il contenuto dell'articolo.
         model_name: Il nome del modello Gemini da utilizzare.
         tools: Una lista di tool da passare al modello (es. per la ricerca web).
 
@@ -85,18 +80,40 @@ def _call_llm_api(
 
     try:
         print(f"\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---")
-        genai.configure(api_key=api_key)
 
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config={
-                "temperature": 0.6,
-                "top_p": 0.95,
-                "top_k": 40,
-            },
+        client = genai.Client(api_key=api_key)
+
+        # Prepara i contenuti dell'utente
+        contents = [
+            genai_types.Content(
+                role="user",
+                parts=[
+                    genai_types.Part.from_text(text=user_prompt),
+                ],
+            ),
+        ]
+
+        # Prepara la configurazione con system instruction e tools
+        generate_content_config = genai_types.GenerateContentConfig(
+            temperature=0.6,
+            top_p=0.95,
+            top_k=40,
+            system_instruction=[
+                genai_types.Part.from_text(text=system_instruction),
+            ],
         )
 
-        response = model.generate_content(prompt, tools=tools)
+        # Aggiungi tools alla configurazione se presenti
+        if tools:
+            generate_content_config.tools = tools
+
+        # Genera il contenuto (non in streaming)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=generate_content_config,
+        )
+
         token_count = response.usage_metadata.total_token_count
 
         print("--- Chiamata API completata con successo! ---")
@@ -114,10 +131,10 @@ def _call_llm_api(
 def summarize_article(
     article: ArticleContent,
     summary_type: str,
-    prompts_dir: str = "src/prompts",
+    prompts_dir: str = os.path.join("src", "prompts"),
     use_web_search: bool = False,
     use_url_context: bool = False,
-    model_name: str = "gemini-1.5-flash",
+    model_name: str = "gemini-2.5-flash",
 ) -> Optional[Dict[str, Any]]:
     prompt_path = os.path.join(prompts_dir, f"{summary_type}.md")
     if not os.path.exists(prompt_path):
@@ -127,27 +144,48 @@ def summarize_article(
     with open(prompt_path, "r", encoding="utf-8") as f:
         template = f.read()
 
-    # Popola il template
-    prompt = template.replace("{{title}}", article.title or "N/A")
-    prompt = prompt.replace("{{text}}", article.text or "N/A")
-    prompt = prompt.replace("{{author}}", article.author or "N/A")
-    prompt = prompt.replace("{{date}}", article.date or "N/A")
-    prompt = prompt.replace("{{url}}", article.url or "N/A")
-    prompt = prompt.replace("{{sitename}}", article.sitename or "N/A")
+    # Separa il template in system instruction e user prompt
+    # La parte prima di "**Contesto dell'articolo:**" è la system instruction
+    # La parte dopo è il user prompt con i dati dell'articolo
+    if "**Contesto dell'articolo:**" in template:
+        system_instruction = template.split("**Contesto dell'articolo:**")[0].strip()
+        user_template = (
+            "**Contesto dell'articolo:**"
+            + template.split("**Contesto dell'articolo:**")[1]
+        )
+    else:
+        # Fallback: usa tutto come system instruction e crea un user prompt semplice
+        system_instruction = template
+        user_template = "**Contesto dell'articolo:**\n{{title}}\n{{text}}"
+
+    # Popola il user prompt con i dati dell'articolo
+    user_prompt = user_template.replace("{{title}}", article.title or "N/A")
+    user_prompt = user_prompt.replace("{{text}}", article.text or "N/A")
+    user_prompt = user_prompt.replace("{{author}}", article.author or "N/A")
+    user_prompt = user_prompt.replace("{{date}}", article.date or "N/A")
+    user_prompt = user_prompt.replace("{{url}}", article.url or "N/A")
+    user_prompt = user_prompt.replace("{{sitename}}", article.sitename or "N/A")
+    user_prompt = user_prompt.replace(
+        "{{tags}}", ", ".join(article.tags) if article.tags else "N/A"
+    )
 
     # Configura i tool di Gemini
     tools = []
     if use_web_search:
-        tools.append({"google_search": {}})
+        tools.append(genai_types.Tool(googleSearch=genai_types.GoogleSearch()))
     if use_url_context and article.url:
-        tools.append({"url_context": {}})
-        prompt = f"Basandoti sul contenuto dell'URL {article.url}, {prompt}"
+        user_prompt = f"Basandoti sul contenuto dell'URL {article.url}, {user_prompt}"
 
     # Attendi il rate limit
     wait_for_rate_limit(model_name)
 
     # Chiama l'API LLM
-    llm_response = _call_llm_api(prompt, model_name=model_name, tools=tools or None)
+    llm_response = _call_llm_api(
+        system_instruction=system_instruction,
+        user_prompt=user_prompt,
+        model_name=model_name,
+        tools=tools or None,
+    )
     print("LLM response received, extracting summary...", flush=True)
     summary_text = llm_response["summary"]
     token_count = llm_response["token_count"]
