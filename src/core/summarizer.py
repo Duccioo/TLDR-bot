@@ -52,20 +52,28 @@ def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
 # --- Funzione di chiamata all'LLM (Implementazione con Google Gemini) ---
 
 
+import time
+
+
 def _call_llm_api(
     system_instruction: str,
     user_prompt: str,
     model_name: str = "gemini-1.5-flash",
     tools: Optional[List[types.Tool]] = None,
+    max_retries: int = 3,
+    retry_delay: int = 15,
 ) -> Dict[str, Any]:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
+    Include un meccanismo di retry per errori 503.
 
     Args:
-        system_instruction: Le istruzioni di sistema per il modello (ruolo e comportamento).
+        system_instruction: Le istruzioni di sistema per il modello.
         user_prompt: Il prompt dell'utente con il contenuto dell'articolo.
         model_name: Il nome del modello Gemini da utilizzare.
-        tools: Una lista di tool da passare al modello (es. per la ricerca web).
+        tools: Una lista di tool da passare al modello.
+        max_retries: Numero massimo di tentativi.
+        retry_delay: Secondi da attendere tra i tentativi.
 
     Returns:
         Un dizionario contenente il riassunto generato e il conteggio dei token,
@@ -78,66 +86,90 @@ def _call_llm_api(
             "token_count": 0,
         }
 
-    try:
-        print(f"\n--- Chiamata all'API di Google Gemini ({model_name}) in corso... ---")
+    for attempt in range(max_retries):
+        try:
+            print(
+                f"\n--- Tentativo {attempt + 1}/{max_retries} di chiamata all'API di Google Gemini ({model_name})... ---"
+            )
 
-        # Crea il client con il nuovo SDK
-        client = genai.Client(api_key=api_key)
+            # Crea il client con il nuovo SDK
+            client = genai.Client(api_key=api_key)
 
-        # Prepara i contenuti dell'utente
-        contents = [
-            types.Content(
-                role="user",
-                parts=[
-                    types.Part.from_text(text=user_prompt),
+            # Prepara i contenuti dell'utente
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=user_prompt),
+                    ],
+                ),
+            ]
+
+            # Prepara la configurazione
+            generate_content_config = types.GenerateContentConfig(
+                temperature=0.6,
+                top_p=0.95,
+                top_k=40,
+                system_instruction=[
+                    types.Part.from_text(text=system_instruction),
                 ],
-            ),
-        ]
+            )
 
-        # Prepara la configurazione
-        generate_content_config = types.GenerateContentConfig(
-            temperature=0.6,
-            top_p=0.95,
-            top_k=40,
-            system_instruction=[
-                types.Part.from_text(text=system_instruction),
-            ],
-        )
+            # Aggiungi tools alla configurazione se presenti
+            if tools:
+                generate_content_config.tools = tools
 
-        # Aggiungi tools alla configurazione se presenti
-        if tools:
-            generate_content_config.tools = tools
+            # Genera il contenuto
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=generate_content_config,
+            )
 
-        # Genera il contenuto (non in streaming)
-        response = client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=generate_content_config,
-        )
+            # Estrai il testo e il conteggio dei token
+            summary_text = ""
+            if hasattr(response, "text"):
+                summary_text = response.text
+            elif hasattr(response, "candidates") and response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "text"):
+                        summary_text += part.text
 
-        # Estrai il testo e il conteggio dei token
-        summary_text = ""
-        if hasattr(response, "text"):
-            summary_text = response.text
-        elif hasattr(response, "candidates") and response.candidates:
-            # Estrai il testo dal primo candidato
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, "text"):
-                    summary_text += part.text
+            token_count = 0
+            if hasattr(response, "usage_metadata"):
+                token_count = response.usage_metadata.total_token_count
 
-        token_count = 0
-        if hasattr(response, "usage_metadata"):
-            token_count = response.usage_metadata.total_token_count
+            print("--- Chiamata API completata con successo! ---")
+            return {"summary": summary_text.strip(), "token_count": token_count}
 
-        print("--- Chiamata API completata con successo! ---")
-        return {"summary": summary_text.strip(), "token_count": token_count}
+        except Exception as e:
+            # Controlla se l'errore è un 503 Service Unavailable
+            if "503" in str(e) and "UNAVAILABLE" in str(e):
+                print(
+                    f"--- ERRORE 503 (Model Overloaded) al tentativo {attempt + 1}. Attendo {retry_delay} secondi... ---"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue  # Riprova
+                else:
+                    print("--- Numero massimo di tentativi raggiunto. ERRORE DEFINITIVO. ---")
+                    return {
+                        "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
+                        "token_count": 0,
+                    }
+            else:
+                # Se l'errore non è un 503, esci subito
+                print(f"--- ERRORE non recuperabile durante la chiamata API: {e} ---")
+                return {
+                    "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
+                    "token_count": 0,
+                }
 
-    except Exception as e:
-        print(f"--- ERRORE durante la chiamata all'API di Google Gemini: {e} ---")
-        return {
-            "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
-            "token_count": 0,
-        }
+    # Se il loop finisce senza successo (dovrebbe essere gestito sopra)
+    return {
+        "summary": "**ERRORE:** Si è verificato un problema imprevisto dopo tutti i tentativi.",
+        "token_count": 0,
+    }
 
 
 # --- Funzione Principale ---
