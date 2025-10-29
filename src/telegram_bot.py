@@ -11,6 +11,7 @@ import random
 import asyncio
 from functools import wraps
 from dotenv import load_dotenv
+from markdown_it import MarkdownIt
 from telegram import (
     ReplyKeyboardMarkup,
     Update,
@@ -41,6 +42,9 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 PROMPTS_FOLDER = os.path.join("src", "prompts")
+
+# Initialize Markdown converter
+md = MarkdownIt("commonmark", {"breaks": True, "html": True})
 
 
 if not TELEGRAM_BOT_TOKEN:
@@ -478,7 +482,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        message_text = f"{random_emoji} *{article_title}*\n\n{formatted_summary}\n\n_Riassunto generato con {model_name}_"
+        # Convert Markdown to HTML
+        html_summary = md.render(formatted_summary)
+        message_text = f"<b>{random_emoji} {article_title}</b>\n\n{html_summary}\n\n<i>Riassunto generato con {model_name}</i>"
 
         stop_animation_event.set()
         await animation_task
@@ -488,7 +494,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_id=processing_message.message_id,
             text=message_text,
             reply_markup=reply_markup,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     except Exception as e:
@@ -558,12 +564,12 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
 
         random_emoji = random.choice(TITLE_EMOJIS)
         article_title = article_content.title or "Articolo"
-        formatted_summary = format_summary_text(one_paragraph_summary)
+        html_summary = md.render(format_summary_text(one_paragraph_summary))
         message_text = (
-            f"{random_emoji} *{article_title}*\n\n"
-            f"{formatted_summary}\n\n"
-            f"📄 [Leggi il riassunto completo qui]({telegraph_url})\n\n"
-            f"_Riassunto generato con {model_name}_"
+            f"<b>{random_emoji} {article_title}</b>\n\n"
+            f"{html_summary}\n\n"
+            f'📄 <a href="{telegraph_url}">Leggi il riassunto completo qui</a>\n\n'
+            f"<i>Riassunto generato con {model_name}</i>"
         )
 
         stop_animation_event.set()
@@ -573,7 +579,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             chat_id=query.message.chat_id,
             message_id=query.message.message_id,
             text=message_text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         await context.bot.delete_message(
             chat_id=query.message.chat_id, message_id=processing_message.message_id
