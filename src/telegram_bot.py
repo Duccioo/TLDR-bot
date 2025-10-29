@@ -117,13 +117,16 @@ def load_available_models():
         return ["gemini-2.5-flash", "gemini-2.0-flash"]
 
 
-def sanitize_html_for_telegram(text):
+def sanitize_html_for_telegram(text: str) -> str:
     """
-    Sanitize HTML text to only include tags supported by Telegram.
-    Telegram supports: <b>, <i>, <u>, <s>, <a>, <code>, <pre>
+    Sanitizes HTML to be compatible with Telegram's HTML parse mode.
+
+    - Replaces paragraph tags (<p>) with double newlines.
+    - Keeps only the allowed HTML tags (<b>, <i>, <u>, <s>, <blockquote>, <a>, <code>, <pre>).
+    - Removes all other unsupported tags.
     """
     if not text:
-        return text
+        return ""
 
     # List of allowed tags for Telegram HTML parse mode
     # See: https://core.telegram.org/bots/api#html-style
@@ -137,29 +140,29 @@ def sanitize_html_for_telegram(text):
         "s",
         "strike",
         "del",
+        "blockquote",
         "a",
         "code",
         "pre",
-        "blockquote",
         "tg-spoiler",
     ]
 
-    # Remove all HTML tags except allowed ones
-    # This regex finds all tags and checks if they're allowed
-    def replace_tag(match):
-        tag = (
-            match.group(1).lower().split()[0]
-        )  # Get tag name (e.g., 'mask' from '<mask>')
-        if tag in allowed_tags or tag.startswith("/") and tag[1:] in allowed_tags:
-            return match.group(0)  # Keep allowed tags
-        return ""  # Remove unsupported tags
+    # 1. Replace paragraph tags with newlines
+    text = re.sub(r"<p>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
 
-    # Pattern to match all HTML tags
-    sanitized = re.sub(r"<(/?\w+)[^>]*>", replace_tag, text)
+    # 2. Build a regex to remove all tags that are NOT in the allowed list
+    # This pattern matches any tag that is not one of the allowed ones.
+    allowed_tags_pattern = "|".join(allowed_tags)
+    unsupported_tags_pattern = re.compile(
+        rf"</?(?!({allowed_tags_pattern})\b)[a-zA-Z0-9]+\b[^>]*>",
+        re.IGNORECASE,
+    )
 
-    # Escape special characters for remaining text (but not for allowed tags)
-    # This helps prevent parsing errors
-    return sanitized
+    sanitized_text = re.sub(unsupported_tags_pattern, "", text)
+
+    # 3. Clean up leading/trailing whitespaces
+    return sanitized_text.strip()
 
 
 def format_summary_text(text: str) -> str:
@@ -482,9 +485,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        # Convert Markdown to HTML
+        # Convert Markdown to HTML and sanitize for Telegram
         html_summary = md.render(formatted_summary)
-        message_text = f"<b>{random_emoji} {article_title}</b>\n\n{html_summary}\n\n<i>Riassunto generato con {model_name}</i>"
+        sanitized_summary = sanitize_html_for_telegram(html_summary)
+        message_text = f"<b>{random_emoji} {article_title}</b>\n\n{sanitized_summary}\n\n<i>Riassunto generato con {model_name}</i>"
 
         stop_animation_event.set()
         await animation_task
