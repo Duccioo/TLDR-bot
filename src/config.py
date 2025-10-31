@@ -19,7 +19,13 @@ PROMPTS_FOLDER = os.path.join("src", "prompts")
 QUOTA_FILE_PATH = os.path.join("data", "quota.json")
 
 # Conversation states
-CHOOSE_PROMPT, CHOOSE_MODEL, AUTH = 1, 2, 3
+(
+    CHOOSE_PROMPT,
+    CHOOSE_MODEL,
+    AUTH,
+    SELECT_SHORT_SUMMARY_MODEL,
+    SELECT_TELEGRAPH_SUMMARY_MODEL,
+) = range(5)
 
 # List of random emojis for article titles
 TITLE_EMOJIS = [

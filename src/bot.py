@@ -14,7 +14,14 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 
-from config import TELEGRAM_BOT_TOKEN, CHOOSE_PROMPT, CHOOSE_MODEL, AUTH
+from config import (
+    TELEGRAM_BOT_TOKEN,
+    CHOOSE_PROMPT,
+    CHOOSE_MODEL,
+    AUTH,
+    SELECT_SHORT_SUMMARY_MODEL,
+    SELECT_TELEGRAPH_SUMMARY_MODEL,
+)
 from handlers.auth_handlers import start, check_password, cancel_auth
 from handlers.command_handlers import (
     help_command,
@@ -26,7 +33,9 @@ from handlers.conversation_handlers import (
     choose_prompt_start,
     prompt_chosen,
     choose_model_start,
-    model_chosen,
+    model_selection_submenu,
+    short_summary_model_chosen,
+    telegraph_summary_model_chosen,
     cancel,
 )
 from handlers.message_handlers import summarize_url
@@ -76,7 +85,19 @@ def setup_handlers(application: Application):
         ],
         states={
             CHOOSE_MODEL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, model_chosen)
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, model_selection_submenu
+                )
+            ],
+            SELECT_SHORT_SUMMARY_MODEL: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, short_summary_model_chosen
+                )
+            ],
+            SELECT_TELEGRAPH_SUMMARY_MODEL: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, telegraph_summary_model_chosen
+                )
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
