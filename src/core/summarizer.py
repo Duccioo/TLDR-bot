@@ -152,7 +152,9 @@ def _call_llm_api(
                     time.sleep(retry_delay)
                     continue  # Riprova
                 else:
-                    print("--- Numero massimo di tentativi raggiunto. ERRORE DEFINITIVO. ---")
+                    print(
+                        "--- Numero massimo di tentativi raggiunto. ERRORE DEFINITIVO. ---"
+                    )
                     return {
                         "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
                         "token_count": 0,
@@ -193,26 +195,30 @@ def summarize_article(
     # La parte prima di "**Contesto dell'articolo:**" è la system instruction
     # La parte dopo è il user prompt con i dati dell'articolo
     if "**Contesto dell'articolo:**" in template:
-        system_instruction = template.split("**Contesto dell'articolo:**")[0].strip()
-        user_template = (
-            "**Contesto dell'articolo:**"
-            + template.split("**Contesto dell'articolo:**")[1]
-        )
+        parts = template.split(
+            "**Contesto dell'articolo:**", 1
+        )  # Split solo alla prima occorrenza
+        system_instruction = parts[0].strip()
+        user_template = "**Contesto dell'articolo:**" + parts[1]
     else:
         # Fallback: usa tutto come system instruction e crea un user prompt semplice
         system_instruction = template
         user_template = "**Contesto dell'articolo:**\n{{title}}\n{{text}}"
 
-    # Popola il user prompt con i dati dell'articolo
+    # Popola PRIMA il template completo con i dati dell'articolo
+    # Questo assicura che anche i placeholder dentro blocchi di codice vengano sostituiti
     user_prompt = user_template.replace("{{title}}", article.title or "N/A")
-    user_prompt = user_prompt.replace("{{text}}", article.text or "N/A")
     user_prompt = user_prompt.replace("{{author}}", article.author or "N/A")
-    user_prompt = user_prompt.replace("{{date}}", article.date or "N/A")
-    user_prompt = user_prompt.replace("{{url}}", article.url or "N/A")
     user_prompt = user_prompt.replace("{{sitename}}", article.sitename or "N/A")
+    user_prompt = user_prompt.replace("{{date}}", article.date or "N/A")
     user_prompt = user_prompt.replace(
         "{{tags}}", ", ".join(article.tags) if article.tags else "N/A"
     )
+    user_prompt = user_prompt.replace("{{url}}", article.url or "N/A")
+
+    # Sostituisci {{text}} per ultimo perché può essere molto lungo
+    # e potrebbe contenere altri placeholder accidentalmente
+    user_prompt = user_prompt.replace("{{text}}", article.text or "N/A")
 
     # Configura i tool di Gemini
     tools = []

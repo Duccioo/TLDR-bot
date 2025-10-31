@@ -15,10 +15,13 @@ Genera un riassunto di un singolo paragrafo che catturi l'essenza dell'articolo 
     -   **Lunghezza:** Il paragrafo non deve superare le 300 parole.
     -   **Tono:** Informativo ma vivace.
     -   **Markdown:** Usa la formattazione in modo strategico:
-        -   **Grassetto** per i 2-3 concetti chiave fondamentali.
+        -   **Grassetto** per i concetti chiave fondamentali.
         -   *Corsivo* per enfatizzare termini o idee specifiche.
         -   Elenchi puntati o numerati per suddividere informazioni complesse, se necessario.
-        -   __Evidenziazioni__ per citazioni o dati cruciali.
+        -   `Codice` per riferimenti tecnici o termini specifici.
+        -   __Sottolineature__ per frasi particolarmente importanti da ricordare!
+        -  ||spoiler|| per Spoiler o informazioni sensibili.
+        -   >Citazioni per concetti veramente importanti che meritano attenzione speciale (usali solo se necessario con parsimonia).
     -   **Emoji:** Integra emoji contestuali 🎯 per guidare l'attenzione del lettore e aggiungere un tocco visivo. Le emoji devono supportare il testo, non distrarre.
 
 **Contesto dell'articolo:**
