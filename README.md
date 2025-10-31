@@ -70,8 +70,6 @@ TLDR-bot/
 └── README.md                 # Questo file
 ```
 
-> **🔥 Novità**: Il bot è stato ristrutturato in moduli per migliorare manutenibilità e scalabilità!  
-> Vedi [STRUCTURE.md](STRUCTURE.md) per dettagli sulla nuova architettura e [MIGRATION.md](MIGRATION.md) per la guida alla migrazione.
 
 ## 🎯 Utilizzo
 
