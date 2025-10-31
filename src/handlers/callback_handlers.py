@@ -10,7 +10,7 @@ from markdown_it import MarkdownIt
 from core.summarizer import summarize_article
 from core.scraper import crea_articolo_telegraph_with_content
 from utils import format_summary_text, sanitize_html_for_telegram, clean_hashtags_format
-from config import TITLE_EMOJIS
+from config import TITLE_EMOJIS, load_available_models
 from handlers.message_handlers import animate_loading_message
 
 # Initialize Markdown converter
@@ -42,7 +42,8 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         if not article_content or not one_paragraph_summary:
             raise ValueError("Impossibile trovare i dati del riassunto.")
 
-        model_name = context.user_data.get("model", "gemini-2.5-flash")
+        default_model = load_available_models()[0] if load_available_models() else "gemini-2.5-flash"
+        model_name = context.user_data.get("telegraph_summary_model", default_model)
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
         technical_summary_prompt = context.user_data.get("prompt", "technical_summary")

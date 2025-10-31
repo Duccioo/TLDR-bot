@@ -13,7 +13,7 @@ from decorators import authorized
 from core.extractor import estrai_contenuto_da_url
 from core.summarizer import summarize_article
 from utils import sanitize_html_for_telegram, format_summary_text, clean_hashtags_format
-from config import TITLE_EMOJIS
+from config import TITLE_EMOJIS, load_available_models
 
 # Initialize Markdown converter
 md = MarkdownIt("commonmark", {"breaks": True, "html": True})
@@ -129,7 +129,8 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         context.user_data["article_content"] = article_content
-        model_name = context.user_data.get("model", "gemini-2.5-flash")
+        default_model = load_available_models()[0] if load_available_models() else "gemini-2.5-flash"
+        model_name = context.user_data.get("short_summary_model", default_model)
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
 
