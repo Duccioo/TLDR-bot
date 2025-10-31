@@ -19,7 +19,7 @@ md = MarkdownIt("commonmark", {"breaks": True, "html": True})
 
 
 async def animate_loading_message(context, chat_id, message_id, stop_event):
-    """Animates a loading message with dots and clock emojis."""
+    """Animates a loading message with dots and clock emojis without sending notifications."""
     base_text = "Elaborazione in corso"
     dots = ""
     clock_emojis = [
@@ -37,10 +37,14 @@ async def animate_loading_message(context, chat_id, message_id, stop_event):
         "🕛",
     ]
     emoji_index = 0
+    print(f"Starting animation for message {message_id}", flush=True)
+    iteration = 0
     while not stop_event.is_set():
+        iteration += 1
         dots = "." * ((len(dots) + 1) % 4)
         emoji = clock_emojis[emoji_index]
         emoji_index = (emoji_index + 1) % len(clock_emojis)
+        print(f"Animation iteration {iteration} for message {message_id}", flush=True)
         try:
             await context.bot.edit_message_text(
                 chat_id=chat_id,
@@ -48,12 +52,18 @@ async def animate_loading_message(context, chat_id, message_id, stop_event):
                 text=f"{base_text}{dots} {emoji}",
                 parse_mode="HTML",
             )
+            print(f"Animation frame {iteration} sent successfully", flush=True)
         except Exception as e:
             # If the message is deleted, stop the animation
             if "Message to edit not found" in str(e):
+                print(f"Animation stopped: message not found", flush=True)
                 break
-            print(f"Error animating message: {e}")
+            print(f"Error animating message: {e}", flush=True)
         await asyncio.sleep(0.5)
+    print(
+        f"Animation stopped for message {message_id} after {iteration} iterations",
+        flush=True,
+    )
 
 
 @authorized
@@ -85,7 +95,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     processing_message = await update.message.reply_text(
-        "⏳ Elaborazione dell'URL in corso...", parse_mode="HTML"
+        "⏳ Elaborazione dell'URL in corso...",
+        parse_mode="HTML",
+        disable_notification=True,
     )
     stop_animation_event = asyncio.Event()
     animation_task = asyncio.create_task(
@@ -96,6 +108,8 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stop_animation_event,
         )
     )
+    # Give the animation task time to start
+    await asyncio.sleep(0.1)
 
     try:
         # Extract content
@@ -150,12 +164,18 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sanitized_summary = sanitize_html_for_telegram(html_summary)
         message_text = f"<b>{random_emoji} {article_title}</b>\n\n{sanitized_summary}\n\n<i>Riassunto generato con {model_name}</i>"
 
+        print("Stopping animation...", flush=True)
         stop_animation_event.set()
         await animation_task
+        print("Animation task completed", flush=True)
 
-        await context.bot.edit_message_text(
+        # Delete loading message and send new message with notification
+        await context.bot.delete_message(
             chat_id=update.effective_chat.id,
             message_id=processing_message.message_id,
+        )
+
+        await update.message.reply_text(
             text=message_text,
             reply_markup=reply_markup,
             parse_mode="HTML",
