@@ -21,7 +21,7 @@ load_dotenv()
 
 def _extract_keywords(text: str) -> List[str]:
     print("\\n--- Arricchimento: Estrazione parole chiave simulata ---")
-    base_keywords = ["tecnologia", "innovazione", "sostenibilità"]
+    base_keywords = ["tecnologia", "innovazione", "sostenibility"]
     words = re.findall(r"\\b\\w{5,}\\b", text.lower())
     if len(words) > 2:
         base_keywords.extend(words[:2])

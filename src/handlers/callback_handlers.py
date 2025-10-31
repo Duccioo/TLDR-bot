@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 from markdown_it import MarkdownIt
 from core.summarizer import summarize_article
 from core.scraper import crea_articolo_telegraph_with_content
-from utils import format_summary_text
+from utils import format_summary_text, sanitize_html_for_telegram, clean_hashtags_format
 from config import TITLE_EMOJIS
 from handlers.message_handlers import animate_loading_message
 
@@ -70,7 +70,13 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
 
         random_emoji = random.choice(TITLE_EMOJIS)
         article_title = article_content.title or "Articolo"
-        html_summary = md.render(format_summary_text(one_paragraph_summary))
+
+        # Pulisce il formato degli hashtag e formatta il testo
+        formatted_summary = clean_hashtags_format(
+            format_summary_text(one_paragraph_summary)
+        )
+        html_summary = sanitize_html_for_telegram(md.render(formatted_summary))
+
         message_text = (
             f"<b>{random_emoji} {article_title}</b>\n\n"
             f"{html_summary}\n\n"

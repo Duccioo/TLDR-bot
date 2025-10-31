@@ -11,7 +11,7 @@ from markdown_it import MarkdownIt
 from decorators import authorized
 from core.extractor import estrai_contenuto_da_url
 from core.summarizer import summarize_article
-from utils import sanitize_html_for_telegram, format_summary_text
+from utils import sanitize_html_for_telegram, format_summary_text, clean_hashtags_format
 from config import TITLE_EMOJIS
 
 # Initialize Markdown converter
@@ -129,7 +129,11 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         one_paragraph_summary = one_paragraph_summary_data.get("summary")
         context.user_data["one_paragraph_summary"] = one_paragraph_summary
-        formatted_summary = format_summary_text(one_paragraph_summary)
+
+        # Pulisce il formato degli hashtag e formatta il testo
+        formatted_summary = clean_hashtags_format(
+            format_summary_text(one_paragraph_summary)
+        )
         random_emoji = random.choice(TITLE_EMOJIS)
         article_title = article_content.title or "Articolo"
 

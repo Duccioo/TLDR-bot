@@ -36,5 +36,4 @@ Genera un riassunto di un singolo paragrafo che catturi l'essenza dell'articolo 
 {{text}}
 ```
 
-**Output desiderato:**
-Scrivi solo il paragrafo di testo che riassume l'articolo in modo completo e conciso.
+Inizia DIRETTAMENTE con il contenuto del riassunto.

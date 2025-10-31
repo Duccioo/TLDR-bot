@@ -7,7 +7,7 @@ import os
 from threading import RLock
 from datetime import datetime, timedelta
 
-QUOTA_FILE = "src/data/quota.json"
+QUOTA_FILE = os.path.join("data", "quota.json")
 lock = RLock()  # Changed from Lock to RLock to allow re-entrant locking
 
 
