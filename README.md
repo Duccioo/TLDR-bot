@@ -9,6 +9,7 @@ Bot per estrarre, riassumere e pubblicare articoli web utilizzando Trafilatura e
 - **Riassunti AI**: Genera riassunti intelligenti con Google Gemini
 - **Pubblicazione Telegraph**: Pubblica automaticamente su Telegra.ph
 - **Hashtag intelligenti**: Generazione automatica di hashtag rilevanti
+- **🆕 Formattazione Avanzata**: Sistema intelligente che preserva abbreviazioni (Dr., Inc., MJ.) e numeri
 
 ## 📦 Installazione
 
@@ -40,22 +41,58 @@ GEMINI_API_KEY=your_gemini_api_key_here
 ```
 TLDR-bot/
 ├── src/
+│   ├── bot.py                # 🆕 Entry point del bot (modulare)
+│   ├── config.py             # 🆕 Configurazione centralizzata
+│   ├── decorators.py         # 🆕 Decoratori personalizzati
+│   ├── keyboards.py          # 🆕 Definizione tastiere Telegram
+│   ├── utils.py              # Funzioni di utilità
+│   ├── handlers/             # 🆕 Gestori modulari del bot
+│   │   ├── auth_handlers.py
+│   │   ├── command_handlers.py
+│   │   ├── conversation_handlers.py
+│   │   ├── message_handlers.py
+│   │   └── callback_handlers.py
 │   ├── core/
 │   │   ├── extractor.py      # Funzioni di estrazione contenuti
 │   │   ├── summarizer.py     # Generazione riassunti con Gemini
-│   │   └── scraper.py        # Pubblicazione su Telegra.ph
-│   ├── bot/
-│   │   ├── telegram_bot.py   # Logica del bot Telegram
-│   │   └── prompts/          # Template dei prompt
+│   │   ├── scraper.py        # Pubblicazione su Telegra.ph
+│   │   ├── quota_manager.py  # Gestione quote API
+│   │   └── rate_limiter.py   # Rate limiting
+│   ├── prompts/              # Template dei prompt
 │   └── data/
 │       └── quota.json        # Dati sulle quote API
 ├── docs/                     # Documentazione dettagliata
+├── STRUCTURE.md              # 🆕 Documentazione struttura modulare
+├── MIGRATION.md              # 🆕 Guida alla migrazione
+├── test_structure.py         # 🆕 Test della nuova struttura
 ├── .env.example              # Template variabili d'ambiente
 ├── requirements.txt          # Dipendenze Python
 └── README.md                 # Questo file
 ```
 
+> **🔥 Novità**: Il bot è stato ristrutturato in moduli per migliorare manutenibilità e scalabilità!  
+> Vedi [STRUCTURE.md](STRUCTURE.md) per dettagli sulla nuova architettura e [MIGRATION.md](MIGRATION.md) per la guida alla migrazione.
+
 ## 🎯 Utilizzo
+
+### Bot Telegram
+
+#### Avvio del bot (Nuova Struttura Modulare) ✅
+```bash
+python src/bot.py
+```
+
+#### Avvio del bot (Vecchio Metodo - Ancora Funzionante)
+```bash
+python src/telegram_bot.py
+```
+
+Il bot Telegram offre:
+- 📝 Selezione prompt personalizzati
+- 🤖 Cambio modello AI
+- 🌐 Ricerca web opzionale
+- 🔗 Contesto URL
+- 📊 Monitoraggio quota API
 
 ### Estrazione Contenuti
 

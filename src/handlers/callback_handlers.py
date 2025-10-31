@@ -1,0 +1,103 @@
+"""
+Callback handlers for the Telegram bot.
+"""
+
+import random
+import asyncio
+from telegram import Update
+from telegram.ext import ContextTypes
+from markdown_it import MarkdownIt
+from core.summarizer import summarize_article
+from core.scraper import crea_articolo_telegraph_with_content
+from utils import format_summary_text
+from config import TITLE_EMOJIS
+from handlers.message_handlers import animate_loading_message
+
+# Initialize Markdown converter
+md = MarkdownIt("commonmark", {"breaks": True, "html": True})
+
+
+async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Creates a Telegraph page with the full summary."""
+    query = update.callback_query
+    await query.answer()
+
+    processing_message = await query.message.reply_text(
+        "⏳ Generazione della pagina Telegraph in corso...", parse_mode="HTML"
+    )
+    stop_animation_event = asyncio.Event()
+    animation_task = asyncio.create_task(
+        animate_loading_message(
+            context,
+            query.message.chat_id,
+            processing_message.message_id,
+            stop_animation_event,
+        )
+    )
+
+    try:
+        article_content = context.user_data.get("article_content")
+        one_paragraph_summary = context.user_data.get("one_paragraph_summary")
+
+        if not article_content or not one_paragraph_summary:
+            raise ValueError("Impossibile trovare i dati del riassunto.")
+
+        model_name = context.user_data.get("model", "gemini-2.5-flash")
+        use_web_search = context.user_data.get("web_search", False)
+        use_url_context = context.user_data.get("url_context", False)
+        technical_summary_prompt = context.user_data.get("prompt", "technical_summary")
+
+        technical_summary_data = summarize_article(
+            article_content,
+            summary_type=technical_summary_prompt,
+            model_name=model_name,
+            use_web_search=use_web_search,
+            use_url_context=use_url_context,
+        )
+
+        if not technical_summary_data:
+            raise ValueError("Impossibile generare il riassunto completo.")
+
+        technical_summary = technical_summary_data.get("summary")
+        image_urls = technical_summary_data.get("images")
+
+        telegraph_url = crea_articolo_telegraph_with_content(
+            title=article_content.title or "Summary",
+            content=technical_summary,
+            author_name=article_content.author or "Summarizer Bot",
+            image_urls=image_urls,
+        )
+
+        random_emoji = random.choice(TITLE_EMOJIS)
+        article_title = article_content.title or "Articolo"
+        html_summary = md.render(format_summary_text(one_paragraph_summary))
+        message_text = (
+            f"<b>{random_emoji} {article_title}</b>\n\n"
+            f"{html_summary}\n\n"
+            f'📄 <a href="{telegraph_url}">Leggi il riassunto completo qui</a>\n\n'
+            f"<i>Riassunto generato con {model_name}</i>"
+        )
+
+        stop_animation_event.set()
+        await animation_task
+
+        await context.bot.edit_message_text(
+            chat_id=query.message.chat_id,
+            message_id=query.message.message_id,
+            text=message_text,
+            parse_mode="HTML",
+        )
+        await context.bot.delete_message(
+            chat_id=query.message.chat_id, message_id=processing_message.message_id
+        )
+
+    except Exception as e:
+        stop_animation_event.set()
+        await animation_task
+        print(f"Error generating Telegraph page: {e}", flush=True)
+        await context.bot.edit_message_text(
+            chat_id=query.message.chat_id,
+            message_id=processing_message.message_id,
+            text=f"🤖 ERRORE: Impossibile creare la pagina Telegraph.\nDettagli: {e}",
+            parse_mode="HTML",
+        )

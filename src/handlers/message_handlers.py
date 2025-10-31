@@ -1,0 +1,169 @@
+"""
+Message handlers for the Telegram bot.
+"""
+
+import re
+import random
+import asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from markdown_it import MarkdownIt
+from decorators import authorized
+from core.extractor import estrai_contenuto_da_url
+from core.summarizer import summarize_article
+from utils import sanitize_html_for_telegram, format_summary_text
+from config import TITLE_EMOJIS
+
+# Initialize Markdown converter
+md = MarkdownIt("commonmark", {"breaks": True, "html": True})
+
+
+async def animate_loading_message(context, chat_id, message_id, stop_event):
+    """Animates a loading message with dots and clock emojis."""
+    base_text = "Elaborazione in corso"
+    dots = ""
+    clock_emojis = [
+        "🕐",
+        "🕑",
+        "🕒",
+        "🕓",
+        "🕔",
+        "🕕",
+        "🕖",
+        "🕗",
+        "🕘",
+        "🕙",
+        "🕚",
+        "🕛",
+    ]
+    emoji_index = 0
+    while not stop_event.is_set():
+        dots = "." * ((len(dots) + 1) % 4)
+        emoji = clock_emojis[emoji_index]
+        emoji_index = (emoji_index + 1) % len(clock_emojis)
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"{base_text}{dots} {emoji}",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            # If the message is deleted, stop the animation
+            if "Message to edit not found" in str(e):
+                break
+            print(f"Error animating message: {e}")
+        await asyncio.sleep(0.5)
+
+
+@authorized
+async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Summarizes the content of a URL."""
+    url = None
+
+    # First, try to extract URL from entities (embedded links)
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "url":
+                url = update.message.text[entity.offset : entity.offset + entity.length]
+                break
+            elif entity.type == "text_link":
+                url = entity.url
+                break
+
+    # If not found in entities, search in text with regex
+    if not url:
+        url_pattern = r"https?://[^\s]+"
+        match = re.search(url_pattern, update.message.text)
+        if match:
+            url = match.group(0)
+
+    if not url:
+        await update.message.reply_text(
+            "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
+        )
+        return
+
+    processing_message = await update.message.reply_text(
+        "⏳ Elaborazione dell'URL in corso...", parse_mode="HTML"
+    )
+    stop_animation_event = asyncio.Event()
+    animation_task = asyncio.create_task(
+        animate_loading_message(
+            context,
+            update.effective_chat.id,
+            processing_message.message_id,
+            stop_animation_event,
+        )
+    )
+
+    try:
+        # Extract content
+        article_content = estrai_contenuto_da_url(url)
+        if not article_content:
+            stop_animation_event.set()
+            await animation_task
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_message.message_id,
+                text="😥 Impossibile estrarre il contenuto dall'URL.",
+                parse_mode="HTML",
+            )
+            return
+
+        context.user_data["article_content"] = article_content
+        model_name = context.user_data.get("model", "gemini-2.5-flash")
+        use_web_search = context.user_data.get("web_search", False)
+        use_url_context = context.user_data.get("url_context", False)
+
+        one_paragraph_summary_data = summarize_article(
+            article_content,
+            summary_type="one_paragraph_summary",
+            model_name=model_name,
+            use_web_search=use_web_search,
+            use_url_context=use_url_context,
+        )
+
+        if not one_paragraph_summary_data:
+            raise ValueError("Impossibile generare il riassunto.")
+
+        one_paragraph_summary = one_paragraph_summary_data.get("summary")
+        context.user_data["one_paragraph_summary"] = one_paragraph_summary
+        formatted_summary = format_summary_text(one_paragraph_summary)
+        random_emoji = random.choice(TITLE_EMOJIS)
+        article_title = article_content.title or "Articolo"
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "📄 Crea pagina Telegraph", callback_data="create_telegraph_page"
+                )
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        # Convert Markdown to HTML and sanitize for Telegram
+        html_summary = md.render(formatted_summary)
+        sanitized_summary = sanitize_html_for_telegram(html_summary)
+        message_text = f"<b>{random_emoji} {article_title}</b>\n\n{sanitized_summary}\n\n<i>Riassunto generato con {model_name}</i>"
+
+        stop_animation_event.set()
+        await animation_task
+
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_message.message_id,
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode="HTML",
+        )
+
+    except Exception as e:
+        stop_animation_event.set()
+        await animation_task
+        print(f"Error during summarization: {e}", flush=True)
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=processing_message.message_id,
+            text=f"🤖 ERRORE: Impossibile completare la richiesta.\nDettagli: {e}",
+            parse_mode="HTML",
+        )

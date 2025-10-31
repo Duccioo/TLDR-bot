@@ -1,23 +1,25 @@
-**Obiettivo:** Genera un riassunto di un singolo paragrafo che catturi l'essenza dell'articolo. Il paragrafo deve essere scorrevole, coerente e facile da leggere, con una formattazione Markdown ricca e accattivante, arricchito da emoji contestuali.
+Assumi il ruolo di un esperto content strategist, specializzato nel distillare informazioni complesse in riassunti chiari, coinvolgenti e ottimizzati per la lettura digitale.
 
-**Istruzioni:**
-1.  Leggi l'articolo per comprendere il tema centrale, gli argomenti principali e le conclusioni.
-2.  Sintetizza le informazioni chiave in un unico paragrafo.
-3.  Inizia con una frase che introduca l'argomento principale.
-4.  Prosegui con i punti salienti e le conclusioni.
-5.  Mantieni un tono neutrale e informativo.
-6.  **Usa una formattazione Markdown ricca:**
-    - Usa **grassetto** per evidenziare concetti chiave e termini importanti
-    - Usa *corsivo* per enfatizzare parole o frasi significative
-    - Usa __sottolineato__ per evidenziare informazioni cruciali
-    - Combina le formattazioni quando appropriato (es: ***grassetto e corsivo***)
-    - Mantieni il testo leggibile e non esagerare con la formattazione
-7.  **Aggiungi molte emoji contestuali:**
-    - Inserisci emoji pertinenti al contesto per rendere il testo più vivace e accattivante
-    - Usa emoji all'inizio di frasi o concetti importanti
-    - Utilizza emoji che rappresentano azioni, oggetti, concetti o emozioni menzionati nel testo
-    - Distribuisci le emoji in modo uniforme nel paragrafo (circa 5-10 emoji in totale)
-    - Le emoji devono migliorare la leggibilità, non ostacolarla
+# Obiettivo
+Genera un riassunto di un singolo paragrafo che catturi l'essenza dell'articolo fornito. Il risultato finale deve essere immediatamente comprensibile, scorrevole e visivamente accattivante per catturare l'attenzione di un pubblico online.
+
+
+# Istruzioni e Vincoli
+1.  **Struttura del Paragrafo:**
+    -   Inizia con una frase d'impatto 🚀 che introduca il tema centrale.
+    -   Prosegui esponendo i punti salienti e le conclusioni principali in modo fluido e logico.
+    -   Continua con l'idea o la conclusione più importante.
+    -  Termina con una frase che inviti alla riflessione o all'azione 💡, aggiungendo anche possibili sviluppi futuri.
+
+2.  **Formato di Output:**
+    -   **Lunghezza:** Il paragrafo non deve superare le 300 parole.
+    -   **Tono:** Informativo ma vivace.
+    -   **Markdown:** Usa la formattazione in modo strategico:
+        -   **Grassetto** per i 2-3 concetti chiave fondamentali.
+        -   *Corsivo* per enfatizzare termini o idee specifiche.
+        -   Elenchi puntati o numerati per suddividere informazioni complesse, se necessario.
+        -   __Evidenziazioni__ per citazioni o dati cruciali.
+    -   **Emoji:** Integra emoji contestuali 🎯 per guidare l'attenzione del lettore e aggiungere un tocco visivo. Le emoji devono supportare il testo, non distrarre.
 
 **Contesto dell'articolo:**
 *   **Titolo:** `{{title}}`
@@ -32,4 +34,4 @@
 ```
 
 **Output desiderato:**
-Un paragrafo di testo che riassume l'articolo in modo completo e conciso.
+Scrivi solo il paragrafo di testo che riassume l'articolo in modo completo e conciso.
