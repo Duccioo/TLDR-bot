@@ -5,6 +5,7 @@ Message handlers for the Telegram bot.
 import re
 import random
 import asyncio
+from functools import partial
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from markdown_it import MarkdownIt
@@ -112,8 +113,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(0.1)
 
     try:
-        # Extract content
-        article_content = estrai_contenuto_da_url(url)
+        # Extract content in a separate thread to not block the event loop
+        loop = asyncio.get_event_loop()
+        article_content = await loop.run_in_executor(None, estrai_contenuto_da_url, url)
+
         if not article_content:
             stop_animation_event.set()
             await animation_task
@@ -130,13 +133,17 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
 
-        one_paragraph_summary_data = summarize_article(
+        # Run summarization in a separate thread to not block the event loop
+        # We need to use functools.partial to pass keyword arguments
+        summarize_func = partial(
+            summarize_article,
             article_content,
-            summary_type="one_paragraph_summary",
+            "one_paragraph_summary",
             model_name=model_name,
             use_web_search=use_web_search,
             use_url_context=use_url_context,
         )
+        one_paragraph_summary_data = await loop.run_in_executor(None, summarize_func)
 
         if not one_paragraph_summary_data:
             raise ValueError("Impossibile generare il riassunto.")
