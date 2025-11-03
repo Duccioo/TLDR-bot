@@ -50,7 +50,7 @@ async def animate_loading_message(context, chat_id, message_id, stop_event):
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"{base_text}{dots} {emoji}",
+                text=f"{emoji} {base_text}{dots}",
                 parse_mode="HTML",
             )
             print(f"Animation frame {iteration} sent successfully", flush=True)
@@ -129,7 +129,11 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         context.user_data["article_content"] = article_content
-        default_model = load_available_models()[0] if load_available_models() else "gemini-2.5-flash"
+        default_model = (
+            load_available_models()[0]
+            if load_available_models()
+            else "gemini-2.5-flash"
+        )
         model_name = context.user_data.get("short_summary_model", default_model)
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
