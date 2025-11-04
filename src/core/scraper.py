@@ -7,6 +7,7 @@ import re
 from typing import Optional
 from telegraph import Telegraph
 from telegraph.exceptions import TelegraphException
+from markdown_it import MarkdownIt
 
 # Import delle funzioni di estrazione e riassunto
 from core.extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come_html
@@ -15,50 +16,14 @@ from core.summarizer import summarize_article
 
 def markdown_to_html(markdown_text: str) -> str:
     """
-    Converte Markdown semplice in HTML compatibile con Telegraph.
-    Telegraph supporta un subset di HTML: <p>, <br>, <h3>, <h4>, <strong>, <em>, <a>, <ul>, <ol>, <li>
+    Converte Markdown in HTML per Telegra.ph, rispettando i singoli a capo.
     """
-    html = markdown_text
-
-    # Converti headers (## -> h3, ### -> h4)
-    html = re.sub(r"^### (.+)$", r"<h4>\1</h4>", html, flags=re.MULTILINE)
-    html = re.sub(r"^## (.+)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
-    html = re.sub(r"^# (.+)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
-
-    # Converti bold (**text** -> <strong>text</strong>)
-    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
-
-    # Converti italic (*text* -> <em>text</em>)
-    html = re.sub(r"\*(.+?)\*", r"<em>\1</em>", html)
-
-    # Converti link ([text](url) -> <a href="url">text</a>)
-    html = re.sub(r"\[([^\]]+)\]\(([^\)]+)\)", r'<a href="\2">\1</a>', html)
-
-    # Converti liste non ordinate (- item -> <li>item</li>)
-    lines = html.split("\n")
-    in_list = False
-    result_lines = []
-
-    for line in lines:
-        if line.strip().startswith("- "):
-            if not in_list:
-                result_lines.append("<ul>")
-                in_list = True
-            item = line.strip()[2:]
-            result_lines.append(f"<li>{item}</li>")
-        else:
-            if in_list:
-                result_lines.append("</ul>")
-                in_list = False
-            if line.strip():
-                result_lines.append(f"<p>{line}</p>")
-            else:
-                result_lines.append("<br>")
-
-    if in_list:
-        result_lines.append("</ul>")
-
-    return "\n".join(result_lines)
+    # Usa la libreria markdown-it per una conversione più robusta
+    md = MarkdownIt("commonmark", {"breaks": True, "html": True})
+    html = md.render(markdown_text)
+    # Rimuove i tag <p> e </p> per un maggiore controllo sulla spaziatura
+    html = html.replace("<p>", "").replace("</p>", "<br>")
+    return html
 
 
 def crea_articolo_telegraph(
@@ -100,20 +65,25 @@ def crea_articolo_telegraph_with_content(
     content: str,
     author_name: Optional[str] = None,
     image_urls: Optional[list] = None,
+    original_url: Optional[str] = None,
 ) -> Optional[str]:
     """
     Pubblica il contenuto (in Markdown) e le immagini su Telegra.ph.
-    Converte automaticamente il Markdown in HTML.
+    Converte il Markdown in HTML e aggiunge il link alla fonte originale.
     """
     html_content = ""
 
-    # Aggiungi immagini in cima
+    # Aggiungi immagini in cima, se presenti
     if image_urls:
         for url in image_urls:
-            html_content += f"<img src='{url}'><br>"
+            html_content += f"<figure><img src='{url}'></figure>"
 
-    # Converti il contenuto da Markdown a HTML
+    # Converti il contenuto principale da Markdown a HTML
     html_content += markdown_to_html(content)
+
+    # Aggiungi una linea di separazione e il link all'articolo originale
+    if original_url:
+        html_content += f'<hr><p><i>Fonte originale: <a href="{original_url}">{original_url}</a></i></p>'
 
     try:
         telegraph = Telegraph()
