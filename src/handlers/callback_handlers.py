@@ -22,6 +22,12 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
 
+    try:
+        article_id = query.data.split(":")[1]
+    except (IndexError, AttributeError):
+        await query.message.reply_text("🤖 ERRORE: ID articolo non valido.")
+        return
+
     processing_message = await query.message.reply_text(
         "⏳ Generazione della pagina Telegraph in corso...", parse_mode="HTML"
     )
@@ -36,13 +42,17 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
     )
 
     try:
-        article_content = context.user_data.get("article_content")
-        one_paragraph_summary = context.user_data.get("one_paragraph_summary")
+        article_data = context.user_data.get("articles", {}).get(article_id)
+        if not article_data:
+            raise ValueError("Impossibile trovare i dati dell'articolo.")
+
+        article_content = article_data.get("article_content")
+        one_paragraph_summary = article_data.get("one_paragraph_summary")
 
         if not article_content or not one_paragraph_summary:
-            raise ValueError("Impossibile trovare i dati del riassunto.")
+            raise ValueError("Dati del riassunto incompleti.")
 
-        default_model = load_available_models()[0] if load_available_models() else "gemini-2.5-flash"
+        default_model = load_available_models()[0] if load_available_models() else "gemini-1.5-flash"
         model_name = context.user_data.get("telegraph_summary_model", default_model)
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
@@ -73,10 +83,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         random_emoji = random.choice(TITLE_EMOJIS)
         article_title = article_content.title or "Articolo"
 
-        # Pulisce il formato degli hashtag e formatta il testo
-        formatted_summary = clean_hashtags_format(
-            format_summary_text(one_paragraph_summary)
-        )
+        formatted_summary = clean_hashtags_format(format_summary_text(one_paragraph_summary))
         html_summary = sanitize_html_for_telegram(md.render(formatted_summary))
 
         message_text = (
@@ -98,6 +105,10 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         await context.bot.delete_message(
             chat_id=query.message.chat_id, message_id=processing_message.message_id
         )
+
+        # Rimuove i dati dell'articolo per liberare memoria
+        if "articles" in context.user_data and article_id in context.user_data["articles"]:
+            del context.user_data["articles"][article_id]
 
     except Exception as e:
         stop_animation_event.set()
