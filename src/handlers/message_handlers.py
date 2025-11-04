@@ -111,7 +111,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        article_id = hashlib.sha256(url.encode()).hexdigest()
+        article_id = hashlib.sha256(url.encode()).hexdigest()[:32]
         if "articles" not in context.user_data:
             context.user_data["articles"] = {}
 
