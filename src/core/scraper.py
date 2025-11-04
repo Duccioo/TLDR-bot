@@ -14,6 +14,16 @@ from core.extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come
 from core.summarizer import summarize_article
 
 
+def sanitize_for_telegraph(html_content: str) -> str:
+    """
+    Sanifica l'HTML per Telegra.ph, sostituendo i tag non supportati.
+    """
+    # Sostituisce i tag <h2> con <h3>
+    html_content = re.sub(r"<h2\b([^>]*)>", r"<h3\1>", html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r"</h2>", r"</h3>", html_content, flags=re.IGNORECASE)
+    return html_content
+
+
 def markdown_to_html(markdown_text: str) -> str:
     """
     Converte Markdown in HTML per Telegra.ph, rispettando i singoli a capo.
@@ -78,8 +88,10 @@ def crea_articolo_telegraph_with_content(
         for url in image_urls:
             html_content += f"<figure><img src='{url}'></figure>"
 
-    # Converti il contenuto principale da Markdown a HTML
-    html_content += markdown_to_html(content)
+    # Converti il contenuto principale da Markdown a HTML e sanificalo
+    main_html_content = markdown_to_html(content)
+    sanitized_content = sanitize_for_telegraph(main_html_content)
+    html_content += sanitized_content
 
     # Aggiungi una linea di separazione e il link all'articolo originale
     if original_url:
