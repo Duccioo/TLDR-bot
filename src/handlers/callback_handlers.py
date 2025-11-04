@@ -67,6 +67,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             content=technical_summary,
             author_name=article_content.author or "Summarizer Bot",
             image_urls=image_urls,
+            original_url=article_content.url,
         )
 
         random_emoji = random.choice(TITLE_EMOJIS)
