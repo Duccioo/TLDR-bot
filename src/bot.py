@@ -124,7 +124,7 @@ def setup_handlers(application: Application):
 
     # Add callback handler for Telegraph page creation
     application.add_handler(
-        CallbackQueryHandler(generate_telegraph_page, pattern="^create_telegraph_page$")
+        CallbackQueryHandler(generate_telegraph_page, pattern="^create_telegraph_page:")
     )
 
 

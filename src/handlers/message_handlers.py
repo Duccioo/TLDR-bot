@@ -5,6 +5,7 @@ Message handlers for the Telegram bot.
 import re
 import random
 import asyncio
+import hashlib
 from functools import partial
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -24,18 +25,7 @@ async def animate_loading_message(context, chat_id, message_id, stop_event):
     base_text = "Elaborazione in corso"
     dots = ""
     clock_emojis = [
-        "🕐",
-        "🕑",
-        "🕒",
-        "🕓",
-        "🕔",
-        "🕕",
-        "🕖",
-        "🕗",
-        "🕘",
-        "🕙",
-        "🕚",
-        "🕛",
+        "🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛",
     ]
     emoji_index = 0
     print(f"Starting animation for message {message_id}", flush=True)
@@ -55,7 +45,6 @@ async def animate_loading_message(context, chat_id, message_id, stop_event):
             )
             print(f"Animation frame {iteration} sent successfully", flush=True)
         except Exception as e:
-            # If the message is deleted, stop the animation
             if "Message to edit not found" in str(e):
                 print(f"Animation stopped: message not found", flush=True)
                 break
@@ -72,7 +61,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
     url = None
 
-    # First, try to extract URL from entities (embedded links)
     if update.message.entities:
         for entity in update.message.entities:
             if entity.type == "url":
@@ -82,7 +70,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 url = entity.url
                 break
 
-    # If not found in entities, search in text with regex
     if not url:
         url_pattern = r"https?://[^\s]+"
         match = re.search(url_pattern, update.message.text)
@@ -90,9 +77,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url = match.group(0)
 
     if not url:
-        await update.message.reply_text(
-            "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
-        )
+        await update.message.reply_text("🔗 Per favore, invia un URL valido.", parse_mode="HTML")
         return
 
     processing_message = await update.message.reply_text(
@@ -109,11 +94,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stop_animation_event,
         )
     )
-    # Give the animation task time to start
     await asyncio.sleep(0.1)
 
     try:
-        # Extract content in a separate thread to not block the event loop
         loop = asyncio.get_event_loop()
         article_content = await loop.run_in_executor(None, estrai_contenuto_da_url, url)
 
@@ -128,18 +111,19 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        context.user_data["article_content"] = article_content
+        article_id = hashlib.sha256(url.encode()).hexdigest()
+        if "articles" not in context.user_data:
+            context.user_data["articles"] = {}
+
+        context.user_data["articles"][article_id] = {"article_content": article_content}
+
         default_model = (
-            load_available_models()[0]
-            if load_available_models()
-            else "gemini-2.5-flash"
+            load_available_models()[0] if load_available_models() else "gemini-1.5-flash"
         )
         model_name = context.user_data.get("short_summary_model", default_model)
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
 
-        # Run summarization in a separate thread to not block the event loop
-        # We need to use functools.partial to pass keyword arguments
         summarize_func = partial(
             summarize_article,
             article_content,
@@ -154,24 +138,20 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("Impossibile generare il riassunto.")
 
         one_paragraph_summary = one_paragraph_summary_data.get("summary")
-        context.user_data["one_paragraph_summary"] = one_paragraph_summary
+        context.user_data["articles"][article_id]["one_paragraph_summary"] = one_paragraph_summary
 
-        # Pulisce il formato degli hashtag e formatta il testo
-        formatted_summary = clean_hashtags_format(
-            format_summary_text(one_paragraph_summary)
-        )
+        formatted_summary = clean_hashtags_format(format_summary_text(one_paragraph_summary))
         random_emoji = random.choice(TITLE_EMOJIS)
         article_title = article_content.title or "Articolo"
 
         keyboard = [
             [
                 InlineKeyboardButton(
-                    "📄 Crea pagina Telegraph", callback_data="create_telegraph_page"
+                    "📄 Crea pagina Telegraph", callback_data=f"create_telegraph_page:{article_id}"
                 )
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        # Convert Markdown to HTML and sanitize for Telegram
         html_summary = md.render(formatted_summary)
         sanitized_summary = sanitize_html_for_telegram(html_summary)
         message_text = f"<b>{random_emoji} {article_title}</b>\n\n{sanitized_summary}\n\n<i>Riassunto generato con {model_name}</i>"
@@ -181,16 +161,12 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await animation_task
         print("Animation task completed", flush=True)
 
-        # Delete loading message and send new message with notification
         await context.bot.delete_message(
             chat_id=update.effective_chat.id,
             message_id=processing_message.message_id,
         )
-
         await update.message.reply_text(
-            text=message_text,
-            reply_markup=reply_markup,
-            parse_mode="HTML",
+            text=message_text, reply_markup=reply_markup, parse_mode="HTML"
         )
 
     except Exception as e:
