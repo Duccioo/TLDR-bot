@@ -142,9 +142,20 @@ def format_summary_text(text: str) -> str:
     # Rimuove righe vuote ma mantiene i singoli a capo
     lines = [line for line in text.split("\n") if line.strip()]
 
-    # Crea paragrafi separati: ogni riga diventa un paragrafo
-    # Questo garantisce spazi visibili tra le frasi nel messaggio Telegram
-    text = "\n\n".join(lines)
+    # Se c'è più di un paragrafo, il primo viene reso in corsivo,
+    # preservando l'emoji iniziale se presente.
+    if len(lines) > 1:
+        first_line = lines[0]
+        emoji_match = re.match(r"^\s*(\S+)\s", first_line)
+        if emoji_match:
+            emoji = emoji_match.group(1)
+            text_after_emoji = first_line[emoji_match.end(0) :].strip()
+            lines[0] = f"{emoji} <i>{text_after_emoji}</i>"
+        else:
+            lines[0] = f"<i>{first_line}</i>"
+
+    # Unisce le righe con un singolo "a capo" per un testo più compatto
+    text = "\n".join(lines)
 
     # Trim generale
     return text.strip()
