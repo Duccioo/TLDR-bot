@@ -10,7 +10,8 @@ from telegraph.exceptions import TelegraphException
 from markdown_it import MarkdownIt
 
 # Import delle funzioni di estrazione e riassunto
-from core.extractor import estrai_contenuto_da_url, estrai_metadati, estrai_come_html
+import asyncio
+from core.extractor import scrape_article
 from core.summarizer import summarize_article
 
 
@@ -114,54 +115,62 @@ def crea_articolo_telegraph_with_content(
 
 
 # --- ESEMPIO DI UTILIZZO DEL NUOVO MODULO SUMMARIZER ---
-if __name__ == "__main__":
+async def main():
+    """Funzione principale per l'esempio asincrono."""
     URL_DI_PROVA = "https://www.ansa.it/sito/notizie/mondo/2025/10/19/rapina-al-louvre-rubati-i-gioielli-di-napoleone.-usato-un-montacarichi-panico-fra-i-visitatori_e12d06cd-8901-4ece-b295-b368a0786b5c.html"
 
-    print(f"--- ESTRAZIONE CONTENUTO DALL'URL ---")
-    print(f"URL: {URL_DI_PROVA}\\n")
+    print("--- ESTRAZIONE CONTENUTO DALL'URL ---")
+    print(f"URL: {URL_DI_PROVA}\n")
 
-    # 1. Estrai il contenuto completo usando la funzione da extractor.py
-    article_content = estrai_contenuto_da_url(URL_DI_PROVA)
+    # 1. Estrai il contenuto completo usando la nuova funzione asincrona
+    article_content, fallback_used = await scrape_article(URL_DI_PROVA)
+
+    if fallback_used:
+        print(">> ATTENZIONE: È stato utilizzato il fallback scraper (BeautifulSoup).\n")
 
     if not article_content:
         print("Impossibile procedere. L'estrazione del contenuto è fallita.")
     else:
-        print(f"✓ Estrazione completata:")
+        print("✓ Estrazione completata:")
         print(f"  - Titolo: {article_content.title}")
         print(f"  - Autore: {article_content.author}")
-        print(f"  - Sito: {article_content.sitename}\\n")
+        print(f"  - Sito: {article_content.sitename}\n")
 
-        # 2. Genera diversi tipi di riassunti
-        print("--- GENERAZIONE RIASSUNTI (SIMULATA) ---\\n")
+        # 2. Genera diversi tipi di riassunti (simulato in modo sincrono per semplicità)
+        print("--- GENERAZIONE RIASSUNTI (SIMULATA) ---\n")
 
         # Esempio 1: Riassunto in tre punti
         print("--- 1. Riassunto in tre punti (con arricchimento) ---")
-        summary_three_points = summarize_article(
+        summary_three_points = await summarize_article(
             article_content,
             summary_type="three_point_summary",
             enable_enrichment=True,
         )
         if summary_three_points:
-            print(f"\\n**RISULTATO:**\\n{summary_three_points}\\n")
+            print(f"\n**RISULTATO:**\n{summary_three_points}\n")
 
         # Esempio 2: Spiegazione per un bambino (senza arricchimento)
         print("--- 2. Spiegazione 'Come a un bambino' (senza arricchimento) ---")
-        summary_eli5 = summarize_article(
+        summary_eli5 = await summarize_article(
             article_content,
             summary_type="eli5_summary",
-            enable_enrichment=False,  # Disabilitiamo l'arricchimento per questo esempio
-            include_hashtags=False,  # Disabilitiamo gli hashtag qui
+            enable_enrichment=False,
+            include_hashtags=False,
         )
         if summary_eli5:
-            print(f"\\n**RISULTATO:**\\n{summary_eli5}\\n")
+            print(f"\n**RISULTATO:**\n{summary_eli5}\n")
 
         # Esempio 3: Post per social media
         print("--- 3. Post per Social Media (con hashtag) ---")
-        summary_social = summarize_article(
+        summary_social = await summarize_article(
             article_content,
             summary_type="social_media_post",
         )
         if summary_social:
-            print(f"\\n**RISULTATO:**\\n{summary_social}\\n")
+            print(f"\n**RISULTATO:**\n{summary_social}\n")
 
         print("--- ESECUZIONE COMPLETATA ---")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

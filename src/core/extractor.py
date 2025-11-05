@@ -3,12 +3,15 @@ Modulo per l'estrazione di contenuti da URL utilizzando Trafilatura.
 Fornisce funzioni per estrarre e formattare il contenuto in vari formati.
 """
 
-import requests
-import trafilatura
-from typing import Optional, Dict, Any
-from bs4 import BeautifulSoup
+import asyncio
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
+
+import aiohttp
+import trafilatura
+from bs4 import BeautifulSoup
 
 
 @dataclass
@@ -42,67 +45,128 @@ class ArticleContent:
         }
 
 
-def estrai_contenuto_da_url(
+async def _scrape_with_beautifulsoup(html_content: str) -> Optional[Dict[str, Any]]:
+    """
+    Estrae il contenuto da HTML usando BeautifulSoup come fallback.
+    """
+    try:
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Rimuovi elementi non desiderati
+        for element in soup(["script", "style", "header", "footer", "nav", "aside"]):
+            element.decompose()
+
+        # Cerca i contenitori di articoli più comuni
+        article_body = (
+            soup.find("article")
+            or soup.find("main")
+            or soup.find("div", class_=re.compile("post|content|text|body"))
+        )
+
+        if not article_body:
+            article_body = soup.body
+
+        if not article_body:
+            return None
+
+        # Estrai il testo, pulendo gli spazi
+        text = " ".join(article_body.get_text(separator=" ", strip=True).split())
+
+        # Estrai il titolo
+        title = soup.title.string if soup.title else "Titolo non disponibile"
+
+        if not text:
+            return None
+
+        return {"title": title.strip(), "text": text}
+    except Exception as e:
+        print(f"Errore durante lo scraping con BeautifulSoup: {e}")
+        return None
+
+
+async def scrape_article(
     url: str,
     timeout: int = 15,
     include_images: bool = True,
     include_links: bool = True,
-) -> Optional[ArticleContent]:
+) -> Tuple[Optional[ArticleContent], bool]:
     """
-    Estrae il contenuto principale da un URL utilizzando Trafilatura.
+    Estrae il contenuto principale da un URL, con fallback su BeautifulSoup.
 
     Args:
-        url: L'URL dell'articolo da cui estrarre il contenuto.
-        timeout: Timeout per la richiesta HTTP in secondi (default: 15).
-        include_images: Se includere le immagini nell'estrazione (default: True).
-        include_links: Se includere i link nell'estrazione (default: True).
+        url: L'URL dell'articolo.
+        timeout: Timeout per la richiesta HTTP.
+        include_images: Se includere le immagini.
+        include_links: Se includere i link.
 
     Returns:
-        Un oggetto ArticleContent con il contenuto estratto, o None in caso di errore.
-
-    Example:
-        >>> article = estrai_contenuto_da_url("https://example.com/article")
-        >>> if article:
-        ...     print(article.title)
-        ...     print(article.text)
+        Una tupla contenente:
+        - Un oggetto ArticleContent o None.
+        - Un booleano che indica se è stato usato il fallback.
     """
+    fallback_used = False
     try:
-        response = requests.get(
-            url, headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout
-        )
-        response.raise_for_status()
-    except requests.RequestException as e:
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": "Mozilla/5.0"}
+        ) as session:
+            async with session.get(url, timeout=timeout) as response:
+                response.raise_for_status()
+                html_content = await response.read()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         print(f"Errore: Impossibile raggiungere l'URL '{url}'. Dettagli: {e}")
-        return None
+        return None, fallback_used
 
-    # Estrai il testo principale e le immagini
-    extracted_data = trafilatura.bare_extraction(
-        response.content,
-        include_images=include_images,
-        include_links=include_links,
-        output_format="python",
-        with_metadata=True,
-    )
+    # 1. Prova con Trafilatura (eseguito in un thread per non bloccare)
+    try:
+        extracted_data = await asyncio.to_thread(
+            trafilatura.bare_extraction,
+            html_content,
+            include_images=include_images,
+            include_links=include_links,
+            output_format="python",
+            with_metadata=True,
+        )
+    except Exception as e:
+        print(f"Errore durante l'esecuzione di Trafilatura: {e}")
+        extracted_data = None
 
-    if not extracted_data or not extracted_data.text:
-        print("Errore: Trafilatura non è riuscito a estrarre contenuto significativo.")
-        return None
+    article = None
+    if extracted_data and extracted_data.text and len(extracted_data.text) > 150:
+        article = ArticleContent(
+            title=extracted_data.title or "Titolo non disponibile",
+            text=extracted_data.text,
+            author=extracted_data.author,
+            date=extracted_data.date,
+            url=url,
+            description=extracted_data.description,
+            sitename=extracted_data.sitename,
+            categories=extracted_data.categories,
+            tags=extracted_data.tags,
+            images=[
+                img.src
+                for img in ([extracted_data.image] if extracted_data.image else [])
+                if hasattr(img, "src") and img.src
+            ],
+        )
+    else:
+        # 2. Se Trafilatura fallisce, usa il fallback BeautifulSoup
+        print("Trafilatura ha fallito o estratto poco testo. Tentativo di fallback con BeautifulSoup...")
+        fallback_used = True
 
-    # Costruisci l'oggetto ArticleContent
-    article = ArticleContent(
-        title=extracted_data.title or "Titolo non disponibile",
-        text=extracted_data.text,
-        author=extracted_data.author,
-        date=extracted_data.date,
-        url=url,
-        description=extracted_data.description,
-        sitename=extracted_data.sitename,
-        categories=extracted_data.categories,
-        tags=extracted_data.tags,
-        images=[img.src for img in ([extracted_data.image] if extracted_data.image else []) if hasattr(img, 'src') and img.src],
-    )
+        fallback_content = await _scrape_with_beautifulsoup(
+            html_content.decode("utf-8", errors="ignore")
+        )
 
-    return article
+        if fallback_content and fallback_content["text"]:
+            article = ArticleContent(
+                title=fallback_content["title"],
+                text=fallback_content["text"],
+                url=url,
+            )
+        else:
+            print("Anche il fallback con BeautifulSoup è fallito.")
+
+    return article, fallback_used
 
 
 def estrai_come_markdown(

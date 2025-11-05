@@ -3,6 +3,7 @@ Modulo per la generazione di riassunti di articoli web con LLM.
 Utilizza Google Gemini per la generazione dei riassunti.
 """
 
+import asyncio
 import os
 import re
 from typing import Optional, List, Set, Dict, Any
@@ -175,38 +176,37 @@ def _call_llm_api(
 
 
 # --- Funzione Principale ---
-def summarize_article(
+async def summarize_article(
     article: ArticleContent,
     summary_type: str,
     prompts_dir: str = os.path.join("src", "prompts"),
     use_web_search: bool = False,
     use_url_context: bool = False,
-    model_name: str = "gemini-2.5-flash",
+    model_name: str = "gemini-1.5-flash",
 ) -> Optional[Dict[str, Any]]:
+    """
+    Funzione asincrona per orchestrare la generazione del riassunto.
+    """
     prompt_path = os.path.join(prompts_dir, f"{summary_type}.md")
     if not os.path.exists(prompt_path):
         print(f"Errore: Il file di prompt non esiste: {prompt_path}")
         return None
 
-    with open(prompt_path, "r", encoding="utf-8") as f:
-        template = f.read()
+    try:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            template = f.read()
+    except IOError as e:
+        print(f"Errore nella lettura del file di prompt: {e}")
+        return None
 
-    # Separa il template in system instruction e user prompt
-    # La parte prima di "**Contesto dell'articolo:**" è la system instruction
-    # La parte dopo è il user prompt con i dati dell'articolo
     if "**Contesto dell'articolo:**" in template:
-        parts = template.split(
-            "**Contesto dell'articolo:**", 1
-        )  # Split solo alla prima occorrenza
+        parts = template.split("**Contesto dell'articolo:**", 1)
         system_instruction = parts[0].strip()
         user_template = "**Contesto dell'articolo:**" + parts[1]
     else:
-        # Fallback: usa tutto come system instruction e crea un user prompt semplice
         system_instruction = template
         user_template = "**Contesto dell'articolo:**\n{{title}}\n{{text}}"
 
-    # Popola PRIMA il template completo con i dati dell'articolo
-    # Questo assicura che anche i placeholder dentro blocchi di codice vengano sostituiti
     user_prompt = user_template.replace("{{title}}", article.title or "N/A")
     user_prompt = user_prompt.replace("{{author}}", article.author or "N/A")
     user_prompt = user_prompt.replace("{{sitename}}", article.sitename or "N/A")
@@ -215,50 +215,36 @@ def summarize_article(
         "{{tags}}", ", ".join(article.tags) if article.tags else "N/A"
     )
     user_prompt = user_prompt.replace("{{url}}", article.url or "N/A")
-
-    # Sostituisci {{text}} per ultimo perché può essere molto lungo
-    # e potrebbe contenere altri placeholder accidentalmente
     user_prompt = user_prompt.replace("{{text}}", article.text or "N/A")
 
-    # Configura i tool di Gemini
     tools = []
     if use_web_search:
-        # Usa il nuovo formato del SDK google-genai
         tools.append(types.Tool(googleSearch=types.GoogleSearch()))
     if use_url_context and article.url:
         user_prompt = f"Basandoti sul contenuto dell'URL {article.url}, {user_prompt}"
 
-    # Attendi il rate limit
-    wait_for_rate_limit(model_name)
+    # Esegui le operazioni bloccanti in un thread separato
+    await asyncio.to_thread(wait_for_rate_limit, model_name)
 
-    # Chiama l'API LLM
-    llm_response = _call_llm_api(
+    llm_response = await asyncio.to_thread(
+        _call_llm_api,
         system_instruction=system_instruction,
         user_prompt=user_prompt,
         model_name=model_name,
         tools=tools or None,
     )
-    print("LLM response received, extracting summary...", flush=True)
+
     summary_text = llm_response["summary"]
     token_count = llm_response["token_count"]
-    print(f"Summary extracted, tokens: {token_count}", flush=True)
 
-    # Incrementa il contatore delle richieste
     if "ERRORE:" not in summary_text:
-        print("Updating model usage...", flush=True)
-        update_model_usage(model_name, token_count)
-        print("Model usage updated", flush=True)
+        await asyncio.to_thread(update_model_usage, model_name, token_count)
 
-    # Aggiungi hashtag solo se non ce ne sono già
-    print(f"Checking hashtags... (has tags: {bool(article.tags)})", flush=True)
-    if "ERRORE:" not in summary_text and not article.tags:
-        print("Generating hashtags...", flush=True)
-        hashtags = generate_hashtags(article, summary_text)
-        print(f"Hashtags generated: {hashtags[:50]}...", flush=True)
-        if hashtags:
-            summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
+        if not article.tags:
+            hashtags = await asyncio.to_thread(generate_hashtags, article, summary_text)
+            if hashtags:
+                summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
 
-    print("Returning summary data", flush=True)
     return {
         "summary": summary_text,
         "images": article.images,
