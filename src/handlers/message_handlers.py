@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 from functools import partial
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import NetworkError
 from telegram.ext import ContextTypes
 from markdown_it import MarkdownIt
 from decorators import authorized
@@ -90,14 +91,22 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url = match.group(0)
 
     if not url:
-        await update.message.reply_text("🔗 Per favore, invia un URL valido.", parse_mode="HTML")
+        try:
+            await update.message.reply_text("🔗 Per favore, invia un URL valido.", parse_mode="HTML")
+        except NetworkError as e:
+            print(f"Errore di rete nell'invio del messaggio di URL non valido: {e}")
         return
 
-    processing_message = await update.message.reply_text(
-        "⏳ Elaborazione dell'URL in corso...",
-        parse_mode="HTML",
-        disable_notification=True,
-    )
+    try:
+        processing_message = await update.message.reply_text(
+            "⏳ Elaborazione dell'URL in corso...",
+            parse_mode="HTML",
+            disable_notification=True,
+        )
+    except NetworkError as e:
+        print(f"Errore di rete nell'invio del messaggio di elaborazione: {e}")
+        return  # Interrompi se non possiamo nemmeno inviare il messaggio iniziale
+
     stop_animation_event = asyncio.Event()
     animation_task = None  # Inizializza a None
 
@@ -117,14 +126,18 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if not article_content:
-            stop_animation_event.set()
-            await animation_task
-            await context.bot.edit_message_text(
-                chat_id=update.effective_chat.id,
-                message_id=processing_message.message_id,
-                text="😥 Impossibile estrarre il contenuto dall'URL.",
-                parse_mode="HTML",
-            )
+            if animation_task:
+                stop_animation_event.set()
+                await animation_task
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=processing_message.message_id,
+                    text="😥 Impossibile estrarre il contenuto dall'URL.",
+                    parse_mode="HTML",
+                )
+            except NetworkError as e:
+                print(f"Errore di rete nel tentativo di aggiornare il messaggio di errore scraping: {e}")
             return
 
         article_id = hashlib.sha256(url.encode()).hexdigest()[:32]
@@ -170,26 +183,39 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sanitized_summary = sanitize_html_for_telegram(html_summary)
         message_text = f"<b>{random_emoji} {article_title}</b>\n\n{sanitized_summary}\n\n<i>Riassunto generato con {model_name}</i>"
 
-        print("Stopping animation...", flush=True)
-        stop_animation_event.set()
-        await animation_task
-        print("Animation task completed", flush=True)
+        if animation_task:
+            stop_animation_event.set()
+            await animation_task
 
-        await context.bot.delete_message(
-            chat_id=update.effective_chat.id,
-            message_id=processing_message.message_id,
-        )
-        await update.message.reply_text(
-            text=message_text, reply_markup=reply_markup, parse_mode="HTML"
-        )
+        try:
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=processing_message.message_id,
+            )
+            await update.message.reply_text(
+                text=message_text, reply_markup=reply_markup, parse_mode="HTML"
+            )
+        except NetworkError as e:
+            print(f"Errore di rete nell'invio del riassunto finale: {e}")
+
+    except NetworkError as e:
+        print(f"Errore di rete non gestito durante il processo di riassunto: {e}")
+        if animation_task and not stop_animation_event.is_set():
+            stop_animation_event.set()
+            await animation_task
 
     except Exception as e:
-        stop_animation_event.set()
-        await animation_task
-        print(f"Error during summarization: {e}", flush=True)
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=processing_message.message_id,
-            text=f"🤖 ERRORE: Impossibile completare la richiesta.\nDettagli: {e}",
-            parse_mode="HTML",
-        )
+        if animation_task and not stop_animation_event.is_set():
+            stop_animation_event.set()
+            await animation_task
+
+        print(f"Errore imprevisto durante il riassunto: {e}")
+        try:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_message.message_id,
+                text=f"🤖 ERRORE: Impossibile completare la richiesta.\nDettagli: {e}",
+                parse_mode="HTML",
+            )
+        except NetworkError as ne:
+            print(f"Errore di rete nel tentativo di inviare un messaggio di errore finale: {ne}")
