@@ -1,5 +1,5 @@
 trafilatura
-requests
+aiohttp
 telegraph
 beautifulsoup4
 python-dotenv
