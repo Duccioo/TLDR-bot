@@ -3,17 +3,15 @@ Callback handlers for the Telegram bot.
 """
 
 import re
-import random
 import asyncio
-import telegramify_markdown
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from core.summarizer import summarize_article
 from core.scraper import crea_articolo_telegraph_with_content
 from core.history_manager import load_history, save_history
-from utils import format_summary_text
-from config import TITLE_EMOJIS, load_available_models
+from utils import parse_hashtags
+from config import load_available_models
 from handlers.message_handlers import animate_loading_message
 
 
@@ -167,7 +165,7 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_hashtags_str = hashtag_data.get("summary") if hashtag_data else ""
 
     if new_hashtags_str and new_hashtags_str.startswith("#"):
-        new_hashtags = [tag.strip() for tag in new_hashtags_str.split()]
+        new_hashtags = parse_hashtags(new_hashtags_str)
 
         # Update history
         user_id = update.effective_user.id

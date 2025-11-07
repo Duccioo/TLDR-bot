@@ -15,7 +15,7 @@ from decorators import authorized
 from core.extractor import scrape_article
 from core.summarizer import summarize_article
 from core.history_manager import add_to_history
-from utils import format_summary_text
+from utils import format_summary_text, parse_hashtags
 from config import TITLE_EMOJIS, load_available_models
 
 
@@ -211,7 +211,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         hashtag_match = re.match(r"^(#\S+(?:\s+#\S+)*)\s*", one_paragraph_summary)
         if hashtag_match:
             hashtag_line = hashtag_match.group(1)
-            llm_hashtags = [tag.strip() for tag in hashtag_line.split()]
+            llm_hashtags = parse_hashtags(hashtag_line)
             summary_text_clean = one_paragraph_summary[hashtag_match.end() :].strip()
 
         # 2. Controlla se l'articolo originale ha già dei tag

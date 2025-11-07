@@ -88,45 +88,6 @@ def format_summary_text(text: str) -> str:
     # Rimuove righe vuote all'inizio
     text = text.lstrip()
 
-    # # Lista di abbreviazioni comuni da preservare
-    # # Include titoli, iniziali, unità di misura, etc.
-    # abbreviations = [
-    #     r"\b([A-Z])\.",  # Iniziali singole (M., J., K., etc.)
-    #     r"\b(Dr|Mr|Mrs|Ms|Prof|Sr|Jr|Ph\.D|M\.D|Ing|Dott|Sig|Dott\.ssa)\.",  # Titoli
-    #     r"\b(Inc|Ltd|Corp|Co|S\.p\.A|S\.r\.l)\.",  # Società
-    #     r"\b(etc|vs|approx|e\.g|i\.e|cf|al|vol|ed)\.",  # Locuzioni latine/comuni
-    #     r"\b([0-9]+)\.",  # Numeri seguiti da punto (elenchi, decimali)
-    #     r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.",  # Mesi abbreviati
-    #     r"\b(St|Ave|Blvd|Rd|Mt)\.",  # Abbreviazioni geografiche
-    # ]
-
-    # Protezione temporanea delle abbreviazioni
-    # Sostituisce il punto con un placeholder per evitare che venga interpretato come fine frase
-    # placeholder_map = {}
-    # placeholder_counter = 0
-
-    # for abbr_pattern in abbreviations:
-    #     matches = re.finditer(abbr_pattern, text, re.IGNORECASE)
-    #     for match in matches:
-    #         placeholder = f"§§ABBR{placeholder_counter}§§"
-    #         placeholder_map[placeholder] = match.group(0)
-    #         text = text.replace(match.group(0), placeholder, 1)
-    #         placeholder_counter += 1
-
-    # # Ripristina le abbreviazioni
-    # for placeholder, original in placeholder_map.items():
-    #     text = text.replace(placeholder, original)
-
-    # Pulizia finale
-    # Rimuove spazi multipli
-    # text = re.sub(r" +", " ", text)
-
-    # # Rimuove spazi prima della punteggiatura
-    # text = re.sub(r"\s+([,.!?;:])", r"\1", text)
-
-    # # Rimuove spazi all'inizio e fine delle righe
-    # text = "\n".join(line.strip() for line in text.split("\n"))
-
     # Rimuove righe vuote ma mantiene i singoli a capo
     lines = [line for line in text.split("\n") if line.strip()]
 
@@ -161,3 +122,47 @@ def format_summary_text(text: str) -> str:
     return text.strip()
 
 
+def parse_hashtags(hashtag_string: str) -> list:
+    """
+    Parse una stringa di hashtag e ritorna una lista di hashtag separati.
+
+    Gestisce i seguenti formati:
+    - Hashtag separati da spazi: "#tag1 #tag2 #tag3"
+    - Hashtag separati da virgole: "#tag1,tag2,tag3" o "#tag1, #tag2, #tag3"
+    - Hashtag in formato misto: "#tag1,tag2 #tag3"
+
+    Args:
+        hashtag_string: La stringa contenente gli hashtag da parsare
+
+    Returns:
+        Lista di hashtag puliti e formattati (ciascuno con il prefisso #)
+    """
+    if not hashtag_string:
+        return []
+
+    hashtags = []
+
+    # Prima separa per spazi
+    parts = hashtag_string.split()
+
+    for part in parts:
+        # Per ogni parte, controlla se contiene virgole
+        if "," in part:
+            # Separa per virgola
+            sub_tags = part.split(",")
+            for tag in sub_tags:
+                tag = tag.strip()
+                if tag:
+                    # Assicura che inizi con #
+                    if not tag.startswith("#"):
+                        tag = "#" + tag
+                    hashtags.append(tag)
+        else:
+            tag = part.strip()
+            if tag:
+                # Assicura che inizi con #
+                if not tag.startswith("#"):
+                    tag = "#" + tag
+                hashtags.append(tag)
+
+    return hashtags
