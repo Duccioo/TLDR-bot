@@ -6,22 +6,21 @@ import re
 import random
 import asyncio
 import hashlib
-from functools import partial
+
+import telegramify_markdown
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import NetworkError
 from telegram.ext import ContextTypes
-from markdown_it import MarkdownIt
 from decorators import authorized
 from core.extractor import scrape_article
 from core.summarizer import summarize_article
-from utils import sanitize_html_for_telegram, format_summary_text, clean_hashtags_format
+from utils import format_summary_text, clean_hashtags_format
 from config import TITLE_EMOJIS, load_available_models
 
-# Initialize Markdown converter
-md = MarkdownIt("commonmark", {"breaks": True, "html": True})
 
-
-async def animate_loading_message(context, chat_id, message_id, stop_event, fallback_mode=False):
+async def animate_loading_message(
+    context, chat_id, message_id, stop_event, fallback_mode=False
+):
     """
     Anima un messaggio di caricamento.
     Usa emoji di orologio di default o una sequenza "arrabbiata" in modalità fallback.
@@ -33,7 +32,20 @@ async def animate_loading_message(context, chat_id, message_id, stop_event, fall
         emojis = ["😊", "😐", "😠", "😡"]
         base_text = "Estrazione standard fallita, uso il metodo alternativo"
     else:
-        emojis = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"]
+        emojis = [
+            "🕐",
+            "🕑",
+            "🕒",
+            "🕓",
+            "🕔",
+            "🕕",
+            "🕖",
+            "🕗",
+            "🕘",
+            "🕙",
+            "🕚",
+            "🕛",
+        ]
 
     emoji_index = 0
     iteration = 0
@@ -88,11 +100,13 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url_pattern = r"https?://[^\s<>\"']+"
         match = re.search(url_pattern, update.message.text)
         if match:
-            url = match.group(0).rstrip('.,;!)')
+            url = match.group(0).rstrip(".,;!)")
 
     if not url:
         try:
-            await update.message.reply_text("🔗 Per favore, invia un URL valido.", parse_mode="HTML")
+            await update.message.reply_text(
+                "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
+            )
         except NetworkError as e:
             print(f"Errore di rete nell'invio del messaggio di URL non valido: {e}")
         return
@@ -137,7 +151,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="HTML",
                 )
             except NetworkError as e:
-                print(f"Errore di rete nel tentativo di aggiornare il messaggio di errore scraping: {e}")
+                print(
+                    f"Errore di rete nel tentativo di aggiornare il messaggio di errore scraping: {e}"
+                )
             return
 
         article_id = hashlib.sha256(url.encode()).hexdigest()[:32]
@@ -147,15 +163,19 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["articles"][article_id] = {"article_content": article_content}
 
         default_model = (
-            load_available_models()[0] if load_available_models() else "gemini-1.5-flash"
+            load_available_models()[0]
+            if load_available_models()
+            else "gemini-2.5-flash"
         )
+        random_emoji = random.choice(TITLE_EMOJIS)
         model_name = context.user_data.get("short_summary_model", default_model)
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
 
+        # Genera il riassunto
         one_paragraph_summary_data = await summarize_article(
             article_content,
-            "one_paragraph_summary",
+            "one_paragraph_summary_V2",
             model_name=model_name,
             use_web_search=use_web_search,
             use_url_context=use_url_context,
@@ -165,35 +185,58 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("Impossibile generare il riassunto.")
 
         one_paragraph_summary = one_paragraph_summary_data.get("summary")
-        context.user_data["articles"][article_id]["one_paragraph_summary"] = one_paragraph_summary
+        context.user_data["articles"][article_id][
+            "one_paragraph_summary"
+        ] = one_paragraph_summary
 
-        formatted_summary = clean_hashtags_format(format_summary_text(one_paragraph_summary))
-        random_emoji = random.choice(TITLE_EMOJIS)
+        formatted_summary = format_summary_text(one_paragraph_summary)
+        summary_body, hashtags_line = clean_hashtags_format(formatted_summary)
+
         article_title = article_content.title or "Articolo"
+
+        message_sections = [f"**{random_emoji} {article_title}**"]
+        if hashtags_line:
+            message_sections.append(hashtags_line)
+        if summary_body:
+            message_sections.append(summary_body)
+        message_sections.append(f"\n_Riassunto generato con {model_name}_")
+
+        message_markdown = "\n\n".join(
+            section for section in message_sections if section
+        )
+
+        telegram_message = telegramify_markdown.markdownify(
+            message_markdown,
+            normalize_whitespace=False,
+        )
 
         keyboard = [
             [
                 InlineKeyboardButton(
-                    "📄 Crea pagina Telegraph", callback_data=f"create_telegraph_page:{article_id}"
+                    "📄 Crea pagina Telegraph",
+                    callback_data=f"create_telegraph_page:{article_id}",
                 )
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        html_summary = md.render(formatted_summary)
-        sanitized_summary = sanitize_html_for_telegram(html_summary)
-        message_text = f"<b>{random_emoji} {article_title}</b>\n\n{sanitized_summary}\n\n<i>Riassunto generato con {model_name}</i>"
 
         if animation_task:
             stop_animation_event.set()
             await animation_task
 
         try:
+            # Elimina il messaggio di processing
             await context.bot.delete_message(
                 chat_id=update.effective_chat.id,
                 message_id=processing_message.message_id,
             )
-            await update.message.reply_text(
-                text=message_text, reply_markup=reply_markup, parse_mode="HTML"
+            # Invia il riassunto come risposta al messaggio originale dell'utente
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=telegram_message,
+                reply_markup=reply_markup,
+                parse_mode="MarkdownV2",
+                reply_to_message_id=update.message.message_id,
             )
         except NetworkError as e:
             print(f"Errore di rete nell'invio del riassunto finale: {e}")
@@ -218,4 +261,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML",
             )
         except NetworkError as ne:
-            print(f"Errore di rete nel tentativo di inviare un messaggio di errore finale: {ne}")
+            print(
+                f"Errore di rete nel tentativo di inviare un messaggio di errore finale: {ne}"
+            )

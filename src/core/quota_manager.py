@@ -4,9 +4,11 @@ Modulo per la gestione delle quote API di Google Gemini.
 
 import json
 import os
+import time
 from threading import RLock
 from datetime import datetime, timedelta
 
+request_timestamps = {}
 QUOTA_FILE = os.path.join("data", "quota.json")
 lock = RLock()  # Changed from Lock to RLock to allow re-entrant locking
 
@@ -128,8 +130,7 @@ def get_quota_summary():
             return "Nessun dato di quota disponibile."
 
         summary = "<b>Riepilogo Quote API Gemini (Free Tier):</b>\n\n"
-        now = datetime.utcnow()
-
+        now = datetime.now(datetime.timezone.utc)
         for model, details in data["gemini"].items():
             rpm_limit = details.get("requests_per_minute", 0)
             rpd_limit = details.get("requests_per_day", 0)
@@ -168,3 +169,37 @@ def get_quota_summary():
             )
 
         return summary
+
+
+def wait_for_rate_limit(model_name: str):
+    """
+    Controlla se una nuova richiesta rispetta il rate limit.
+    Se il limite è stato raggiunto, attende il tempo necessario.
+    """
+    rate_limits = get_quota_data()["gemini"]
+
+    with lock:
+        if model_name not in rate_limits:
+            return  # Nessun limite specificato per questo modello
+
+        limit = rate_limits[model_name]["requests_per_minute"]
+        now = time.time()
+
+        if model_name not in request_timestamps:
+            request_timestamps[model_name] = []
+
+        # Rimuovi i timestamp più vecchi di un minuto
+        request_timestamps[model_name] = [
+            t for t in request_timestamps[model_name] if now - t < 60
+        ]
+
+        if len(request_timestamps[model_name]) >= limit:
+            # Calcola il tempo di attesa
+            time_to_wait = 60 - (now - request_timestamps[model_name][0])
+            print(
+                f"--- Rate limit raggiunto per {model_name}. Attesa di {time_to_wait:.2f} secondi. ---"
+            )
+            time.sleep(time_to_wait)
+
+        # Aggiungi il timestamp della nuova richiesta
+        request_timestamps[model_name].append(time.time())

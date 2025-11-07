@@ -20,7 +20,9 @@ def sanitize_for_telegraph(html_content: str) -> str:
     Sanifica l'HTML per Telegra.ph, sostituendo i tag non supportati.
     """
     # Sostituisce i tag <h2> con <h3>
-    html_content = re.sub(r"<h2\b([^>]*)>", r"<h3\1>", html_content, flags=re.IGNORECASE)
+    html_content = re.sub(
+        r"<h2\b([^>]*)>", r"<h3\1>", html_content, flags=re.IGNORECASE
+    )
     html_content = re.sub(r"</h2>", r"</h3>", html_content, flags=re.IGNORECASE)
     return html_content
 
@@ -35,40 +37,6 @@ def markdown_to_html(markdown_text: str) -> str:
     # Rimuove i tag <p> e </p> per un maggiore controllo sulla spaziatura
     html = html.replace("<p>", "").replace("</p>", "<br>")
     return html
-
-
-def crea_articolo_telegraph(
-    url_articolo: str, author_name: Optional[str] = None
-) -> Optional[str]:
-    """
-    Estrae il contenuto da un URL e lo pubblica su Telegra.ph.
-    (Questa funzione rimane invariata, ma potrebbe essere usata in un flusso di lavoro)
-    """
-    metadata = estrai_metadati(url_articolo)
-    if not metadata:
-        print("Errore: Impossibile estrarre i metadati.")
-        return None
-
-    html_content = estrai_come_html(url_articolo, pulisci_html=True)
-    if not html_content:
-        print("Errore: Impossibile estrarre il contenuto.")
-        return None
-
-    titolo = metadata.get("title", "Titolo non disponibile")
-    autore = author_name or metadata.get("author") or "Automation Bot"
-
-    try:
-        telegraph = Telegraph()
-        telegraph.create_account(short_name="Python Bot")
-        response = telegraph.create_page(
-            title=titolo, html_content=html_content, author_name=autore
-        )
-        url_creato = response["url"]
-        print(f"✓ Articolo creato con successo su Telegra.ph: {url_creato}")
-        return url_creato
-    except TelegraphException as e:
-        print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
-        return None
 
 
 async def crea_articolo_telegraph_with_content(
@@ -127,7 +95,9 @@ async def main():
     article_content, fallback_used = await scrape_article(URL_DI_PROVA)
 
     if fallback_used:
-        print(">> ATTENZIONE: È stato utilizzato il fallback scraper (BeautifulSoup).\n")
+        print(
+            ">> ATTENZIONE: È stato utilizzato il fallback scraper (BeautifulSoup).\n"
+        )
 
     if not article_content:
         print("Impossibile procedere. L'estrazione del contenuto è fallita.")

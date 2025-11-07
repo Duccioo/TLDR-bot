@@ -6,13 +6,13 @@ Utilizza Google Gemini per la generazione dei riassunti.
 import asyncio
 import os
 import re
+import time
 from typing import Optional, List, Set, Dict, Any
 from dotenv import load_dotenv
 
-# Importa le classi necessarie
+# ---
 from core.extractor import ArticleContent
-from core.rate_limiter import wait_for_rate_limit
-from core.quota_manager import update_model_usage
+from core.quota_manager import update_model_usage, wait_for_rate_limit
 from google import genai
 from google.genai import types
 
@@ -51,11 +51,6 @@ def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
 
 
 # --- Funzione di chiamata all'LLM (Implementazione con Google Gemini) ---
-
-
-import time
-
-
 def _call_llm_api(
     system_instruction: str,
     user_prompt: str,
@@ -63,6 +58,9 @@ def _call_llm_api(
     tools: Optional[List[types.Tool]] = None,
     max_retries: int = 3,
     retry_delay: int = 15,
+    temperature: float = 0.6,
+    top_p: float = 0.95,
+    top_k: int = 40,
 ) -> Dict[str, Any]:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
@@ -75,6 +73,9 @@ def _call_llm_api(
         tools: Una lista di tool da passare al modello.
         max_retries: Numero massimo di tentativi.
         retry_delay: Secondi da attendere tra i tentativi.
+        temperature: Parametro di temperatura per la generazione, che controlla la casualità.
+        top_p: Parametro top_p per la generazione, ovvero la soglia di probabilità cumulativa.
+        top_k: Parametro top_k per la generazione, ovvero il numero di token più probabili da considerare.
 
     Returns:
         Un dizionario contenente il riassunto generato e il conteggio dei token,
@@ -108,9 +109,9 @@ def _call_llm_api(
 
             # Prepara la configurazione
             generate_content_config = types.GenerateContentConfig(
-                temperature=0.6,
-                top_p=0.95,
-                top_k=40,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
                 system_instruction=[
                     types.Part.from_text(text=system_instruction),
                 ],
@@ -136,9 +137,24 @@ def _call_llm_api(
                     if hasattr(part, "text"):
                         summary_text += part.text
 
+            # Estrai il conteggio dei token in modo sicuro
             token_count = 0
-            if hasattr(response, "usage_metadata"):
-                token_count = response.usage_metadata.total_token_count
+            try:
+                if hasattr(response, "usage_metadata"):
+                    usage = response.usage_metadata
+                    if hasattr(usage, "total_token_count"):
+                        token_count = usage.total_token_count
+                    elif hasattr(usage, "prompt_token_count") and hasattr(
+                        usage, "candidates_token_count"
+                    ):
+                        token_count = (
+                            usage.prompt_token_count + usage.candidates_token_count
+                        )
+            except AttributeError as e:
+                print(
+                    f"--- Avviso: Impossibile estrarre il conteggio dei token: {e} ---"
+                )
+                token_count = 0
 
             print("--- Chiamata API completata con successo! ---")
             return {"summary": summary_text.strip(), "token_count": token_count}
@@ -182,7 +198,7 @@ async def summarize_article(
     prompts_dir: str = os.path.join("src", "prompts"),
     use_web_search: bool = False,
     use_url_context: bool = False,
-    model_name: str = "gemini-1.5-flash",
+    model_name: str = "gemini-2.5-flash",
 ) -> Optional[Dict[str, Any]]:
     """
     Funzione asincrona per orchestrare la generazione del riassunto.
@@ -233,7 +249,7 @@ async def summarize_article(
         model_name=model_name,
         tools=tools or None,
     )
-
+    
     summary_text = llm_response["summary"]
     token_count = llm_response["token_count"]
 

@@ -6,7 +6,6 @@ Fornisce funzioni per estrarre e formattare il contenuto in vari formati.
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
@@ -48,37 +47,88 @@ class ArticleContent:
 async def _scrape_with_beautifulsoup(html_content: str) -> Optional[Dict[str, Any]]:
     """
     Estrae il contenuto da HTML usando BeautifulSoup come fallback.
+    Versione più permissiva che estrae tutto il testo disponibile.
     """
     try:
         soup = BeautifulSoup(html_content, "html.parser")
 
         # Rimuovi elementi non desiderati
-        for element in soup(["script", "style", "header", "footer", "nav", "aside"]):
+        for element in soup(
+            [
+                "script",
+                "style",
+                "header",
+                "footer",
+                "nav",
+                "aside",
+                "iframe",
+            ]
+        ):
             element.decompose()
 
-        # Cerca i contenitori di articoli più comuni
-        article_body = (
-            soup.find("article")
-            or soup.find("main")
-            or soup.find("div", class_=re.compile("post|content|text|body"))
-        )
+        # Prova diversi metodi per trovare il contenuto, dal più specifico al più generico
+        article_body = None
 
+        # 1. Cerca elementi article, main
+        article_body = soup.find("article") or soup.find("main")
+
+        # 2. Cerca div con classi comuni per contenuti
+        if not article_body:
+            article_body = soup.find(
+                "div",
+                class_=re.compile(
+                    r"(post|content|article|text|body|entry|story|paragraph|reader)",
+                    re.IGNORECASE,
+                ),
+            )
+
+        # 3. Cerca per id comuni
+        if not article_body:
+            article_body = soup.find(
+                "div",
+                id=re.compile(
+                    r"(post|content|article|text|body|entry|story|main)", re.IGNORECASE
+                ),
+            )
+
+        # 4. Fallback: usa tutto il body
         if not article_body:
             article_body = soup.body
 
+        # 5. Ultimo tentativo: usa tutta la pagina
         if not article_body:
-            return None
+            article_body = soup
 
-        # Estrai il testo, pulendo gli spazi
+        # Estrai tutto il testo disponibile, pulendo gli spazi
         text = " ".join(article_body.get_text(separator=" ", strip=True).split())
 
-        # Estrai il titolo
-        title = soup.title.string if soup.title else "Titolo non disponibile"
+        # Estrai il titolo da più fonti possibili
+        title = None
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()
 
-        if not text:
+        # Cerca anche in meta tags
+        if not title:
+            meta_title = soup.find("meta", property="og:title") or soup.find(
+                "meta", attrs={"name": "twitter:title"}
+            )
+            if meta_title and meta_title.get("content"):
+                title = meta_title.get("content").strip()
+
+        # Cerca in h1
+        if not title:
+            h1 = soup.find("h1")
+            if h1:
+                title = h1.get_text(strip=True)
+
+        if not title:
+            title = "Titolo non disponibile"
+
+        # Ritorna anche se il testo è minimo - lascia che sia l'LLM a decidere
+        if not text or len(text.strip()) < 10:
             return None
 
-        return {"title": title.strip(), "text": text}
+        return {"title": title, "text": text}
     except Exception as e:
         print(f"Errore durante lo scraping con BeautifulSoup: {e}")
         return None
@@ -131,7 +181,8 @@ async def scrape_article(
         extracted_data = None
 
     article = None
-    if extracted_data and extracted_data.text and len(extracted_data.text) > 150:
+    # Soglia minima ridotta per Trafilatura (da 150 a 50 caratteri)
+    if extracted_data and extracted_data.text and len(extracted_data.text) > 50:
         article = ArticleContent(
             title=extracted_data.title or "Titolo non disponibile",
             text=extracted_data.text,
@@ -150,216 +201,27 @@ async def scrape_article(
         )
     else:
         # 2. Se Trafilatura fallisce, usa il fallback BeautifulSoup
-        print("Trafilatura ha fallito o estratto poco testo. Tentativo di fallback con BeautifulSoup...")
+        print(
+            "Trafilatura ha estratto poco o nessun testo. Tentativo di fallback con BeautifulSoup..."
+        )
         fallback_used = True
 
         fallback_content = await _scrape_with_beautifulsoup(
             html_content.decode("utf-8", errors="ignore")
         )
 
-        if fallback_content and fallback_content["text"]:
+        if fallback_content and fallback_content.get("text"):
             article = ArticleContent(
                 title=fallback_content["title"],
                 text=fallback_content["text"],
                 url=url,
             )
+            print(
+                f"BeautifulSoup ha estratto {len(fallback_content['text'])} caratteri di testo."
+            )
         else:
-            print("Anche il fallback con BeautifulSoup è fallito.")
+            print(
+                "Anche il fallback con BeautifulSoup non ha estratto contenuto sufficiente."
+            )
 
     return article, fallback_used
-
-
-def estrai_come_markdown(
-    url: str,
-    timeout: int = 15,
-    include_metadata: bool = True,
-) -> Optional[str]:
-    """
-    Estrae il contenuto da un URL e lo formatta in Markdown.
-
-    Args:
-        url: L'URL dell'articolo da cui estrarre il contenuto.
-        timeout: Timeout per la richiesta HTTP in secondi (default: 15).
-        include_metadata: Se includere i metadati nell'output (default: True).
-
-    Returns:
-        Una stringa in formato Markdown, o None in caso di errore.
-
-    Example:
-        >>> markdown = estrai_come_markdown("https://example.com/article")
-        >>> if markdown:
-        ...     with open("article.md", "w") as f:
-        ...         f.write(markdown)
-    """
-    try:
-        response = requests.get(
-            url, headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout
-        )
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"Errore: Impossibile raggiungere l'URL '{url}'. Dettagli: {e}")
-        return None
-
-    # Estrai il contenuto in formato Markdown
-    markdown_content = trafilatura.extract(
-        response.content,
-        include_images=True,
-        include_links=True,
-        output_format="markdown",
-    )
-
-    if not markdown_content:
-        print("Errore: Trafilatura non è riuscito a estrarre contenuto significativo.")
-        return None
-
-    # Se richiesto, aggiungi i metadati in testa
-    if include_metadata:
-        metadata = trafilatura.extract_metadata(response.content)
-        if metadata:
-            header = []
-            header.append("---")
-            if metadata.title:
-                header.append(f"# {metadata.title}")
-                header.append("")
-            if metadata.author:
-                header.append(f"**Autore:** {metadata.author}")
-            if metadata.date:
-                header.append(f"**Data:** {metadata.date}")
-            if metadata.sitename:
-                header.append(f"**Fonte:** {metadata.sitename}")
-            if metadata.description:
-                header.append(f"\n_{metadata.description}_")
-            header.append("")
-            header.append(f"**URL originale:** {url}")
-            header.append("---")
-            header.append("")
-
-            markdown_content = "\n".join(header) + "\n" + markdown_content
-
-    return markdown_content
-
-
-def estrai_come_html(
-    url: str,
-    timeout: int = 15,
-    pulisci_html: bool = True,
-) -> Optional[str]:
-    """
-    Estrae il contenuto da un URL e lo formatta in HTML pulito.
-
-    Args:
-        url: L'URL dell'articolo da cui estrarre il contenuto.
-        timeout: Timeout per la richiesta HTTP in secondi (default: 15).
-        pulisci_html: Se pulire l'HTML con BeautifulSoup (default: True).
-
-    Returns:
-        Una stringa HTML pulita, o None in caso di errore.
-
-    Example:
-        >>> html = estrai_come_html("https://example.com/article")
-        >>> if html:
-        ...     with open("article.html", "w") as f:
-        ...         f.write(html)
-    """
-    try:
-        response = requests.get(
-            url, headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout
-        )
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"Errore: Impossibile raggiungere l'URL '{url}'. Dettagli: {e}")
-        return None
-
-    # Estrai il contenuto in formato HTML
-    html_content = trafilatura.extract(
-        response.content, include_images=True, include_links=True, output_format="html"
-    )
-
-    if not html_content:
-        print("Errore: Trafilatura non è riuscito a estrarre contenuto significativo.")
-        return None
-
-    # Pulisci l'HTML se richiesto
-    if pulisci_html:
-        soup = BeautifulSoup(html_content, "html.parser")
-
-        # Rimuovi i tag html, head e body se presenti
-        for tag in soup.find_all(["html", "head", "body"]):
-            tag.unwrap()
-
-        html_content = str(soup).strip()
-
-    return html_content
-
-
-def estrai_metadati(url: str, timeout: int = 15) -> Optional[Dict[str, Any]]:
-    """
-    Estrae solo i metadati da un URL senza il contenuto completo.
-
-    Args:
-        url: L'URL da cui estrarre i metadati.
-        timeout: Timeout per la richiesta HTTP in secondi (default: 15).
-
-    Returns:
-        Un dizionario con i metadati estratti, o None in caso di errore.
-
-    Example:
-        >>> metadata = estrai_metadati("https://example.com/article")
-        >>> if metadata:
-        ...     print(metadata['title'])
-    """
-    try:
-        response = requests.get(
-            url, headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout
-        )
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"Errore: Impossibile raggiungere l'URL '{url}'. Dettagli: {e}")
-        return None
-
-    metadata = trafilatura.extract_metadata(response.content)
-
-    if not metadata:
-        return None
-
-    return {
-        "title": metadata.title,
-        "author": metadata.author,
-        "date": metadata.date,
-        "description": metadata.description,
-        "sitename": metadata.sitename,
-        "categories": metadata.categories,
-        "tags": metadata.tags,
-        "url": url,
-    }
-
-
-if __name__ == "__main__":
-    # Test delle funzioni
-    TEST_URL = "https://www.ansa.it/sito/notizie/mondo/2025/10/19/rapina-al-louvre-rubati-i-gioielli-di-napoleone.-usato-un-montacarichi-panico-fra-i-visitatori_e12d06cd-8901-4ece-b295-b368a0786b5c.html"
-
-    print("=== Test estrazione contenuto ===")
-    article = estrai_contenuto_da_url(TEST_URL)
-    if article:
-        print(f"Titolo: {article.title}")
-        print(f"Autore: {article.author}")
-        print(f"Data: {article.date}")
-        print(f"Sito: {article.sitename}")
-        print(f"Testo (primi 200 caratteri): {article.text[:200]}...")
-
-    print("\n=== Test estrazione Markdown ===")
-    markdown = estrai_come_markdown(TEST_URL)
-    if markdown:
-        print(f"Markdown (primi 300 caratteri):\n{markdown[:300]}...")
-
-    print("\n=== Test estrazione HTML ===")
-    html = estrai_come_html(TEST_URL)
-    if html:
-        print(f"HTML (primi 300 caratteri):\n{html[:300]}...")
-
-    print("\n=== Test estrazione metadati ===")
-    metadata = estrai_metadati(TEST_URL)
-    if metadata:
-        print("Metadati estratti:")
-        for key, value in metadata.items():
-            print(f"  {key}: {value}")

@@ -26,7 +26,9 @@ def get_model_keyboard():
 def get_model_selection_submenu_keyboard(context):
     """Returns the model selection submenu keyboard."""
     user_data = context.user_data
-    default_model = load_available_models()[0] if load_available_models() else "gemini-2.5-flash"
+    default_model = (
+        load_available_models()[0] if load_available_models() else "gemini-2.5-flash"
+    )
 
     short_summary_model = user_data.get("short_summary_model", default_model)
     telegraph_summary_model = user_data.get("telegraph_summary_model", default_model)
