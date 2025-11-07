@@ -1,22 +1,25 @@
-**Obiettivo:** Fornisci un riassunto dettagliato e tecnico per un pubblico esperto. Concentrati sui dati, sui risultati chiave, sulle metodologie e sulle implicazioni tecniche discusse nell'articolo.
+**Objective:** Provide a detailed and technical summary for an expert audience. Focus on the data, key findings, methodologies, and technical implications discussed in the article.
 
-**Istruzioni:**
-1.  Identifica i dati numerici, le statistiche e i risultati principali.
-2.  Descrivi la metodologia utilizzata, se presente.
-3.  Evidenzia le conclusioni tecniche e le implicazioni per gli addetti ai lavori.
-4.  Mantieni un linguaggio preciso e formale, utilizzando la terminologia appropriata.
+**Language:**
+Write the summary in `{{summary_language}}`.
 
-**Contesto dell'articolo:**
-*   **Titolo:** `{{title}}`
-*   **Autore:** `{{author}}`
-*   **Sito:** `{{sitename}}`
-*   **Data di pubblicazione:** `{{date}}`
-*   **Tag/Categorie:** `{{tags}}`
+**Instructions:**
+1.  Identify numerical data, statistics, and main results.
+2.  Describe the methodology used, if any.
+3.  Highlight the technical conclusions and implications for insiders.
+4.  Maintain precise and formal language, using appropriate terminology.
 
-**Testo dell'articolo:**
+**Article Context:**
+*   **Title:** `{{title}}`
+*   **Author:** `{{author}}`
+*   **Site:** `{{sitename}}`
+*   **Publication Date:** `{{date}}`
+*   **Tags/Categories:** `{{tags}}`
+
+**Article Text:**
 ```
 {{text}}
 ```
 
-**Output desiderato:**
-Un riassunto strutturato che si concentra sugli aspetti tecnici, i dati e i risultati dell'articolo.
+**Desired Output:**
+A structured summary focusing on the technical aspects, data, and findings of the article.

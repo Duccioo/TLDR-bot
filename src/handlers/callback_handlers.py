@@ -23,11 +23,11 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
     try:
         article_id = query.data.split(":")[1]
     except (IndexError, AttributeError):
-        await query.message.reply_text("🤖 ERRORE: ID articolo non valido.")
+        await query.message.reply_text("🤖 ERROR: Invalid article ID.")
         return
 
     processing_message = await query.message.reply_text(
-        "⏳ Generazione della pagina Telegraph in corso...", parse_mode="HTML"
+        "⏳ Generating Telegraph page...", parse_mode="HTML"
     )
     stop_animation_event = asyncio.Event()
     animation_task = asyncio.create_task(
@@ -42,14 +42,14 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
     try:
         article_data = context.user_data.get("articles", {}).get(article_id)
         if not article_data:
-            raise ValueError("Impossibile trovare i dati dell'articolo.")
+            raise ValueError("Could not find article data.")
 
         article_content = article_data.get("article_content")
         one_paragraph_summary = article_data.get("one_paragraph_summary")
         hashtags = article_data.get("hashtags", [])
 
         if not article_content or not one_paragraph_summary:
-            raise ValueError("Dati del riassunto incompleti.")
+            raise ValueError("Incomplete summary data.")
 
         default_model = (
             load_available_models()[0]
@@ -70,12 +70,11 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         )
 
         if not technical_summary_data:
-            raise ValueError("Impossibile generare il riassunto completo.")
+            raise ValueError("Could not generate the full summary.")
 
         technical_summary = technical_summary_data.get("summary")
         image_urls = technical_summary_data.get("images")
 
-        # Ensure hashtags from the summary are included in the Telegraph page
         telegraph_content = technical_summary
         if hashtags:
             hashtags_line = " ".join(hashtags)
@@ -89,20 +88,16 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             original_url=article_content.url,
         )
 
-        # Get the original message text and convert from MarkdownV2 to HTML
         original_message_text = query.message.text_html
+        updated_text = f'{original_message_text}\n\n📄 <a href="{telegraph_url}">Full summary:</a>'
 
-        # Append the Telegraph link as plain text to enable preview
-        updated_text = f'{original_message_text}\n\n📄 <a href="{telegraph_url}">Riassunto completo:</a>'
-
-        # Edit the message with the Telegraph link
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
             message_id=query.message.message_id,
             text=updated_text,
             parse_mode="HTML",
-            disable_web_page_preview=False,  # Enable preview
-            reply_markup=None,  # Remove keyboard after creating the page
+            disable_web_page_preview=False,
+            reply_markup=None,
         )
 
     except Exception as e:
@@ -112,7 +107,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
             message_id=processing_message.message_id,
-            text=f"🤖 ERRORE: Impossibile creare la pagina Telegraph.\nDettagli: {e}",
+            text=f"🤖 ERROR: Could not create Telegraph page.\nDetails: {e}",
             parse_mode="HTML",
         )
     finally:
@@ -137,25 +132,23 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         article_id = query.data.split(":")[1]
     except (IndexError, AttributeError):
-        await query.message.reply_text("🤖 ERRORE: ID articolo non valido.")
+        await query.message.reply_text("🤖 ERROR: Invalid article ID.")
         return
 
     article_data = context.user_data.get("articles", {}).get(article_id)
     if not article_data or "article_content" not in article_data:
         await query.edit_message_text(
-            "🤖 ERRORE: Dati dell'articolo scaduti o non trovati. Riprova a inviare l'URL."
+            "🤖 ERROR: Article data expired or not found. Please try sending the URL again."
         )
         return
 
     article_content = article_data["article_content"]
 
-    # Use the same model as the short summary for consistency
     default_model = (
         load_available_models()[0] if load_available_models() else "gemini-1.5-flash"
     )
     model_name = context.user_data.get("short_summary_model", default_model)
 
-    # Call LLM to get only hashtags
     hashtag_data = await summarize_article(
         article_content,
         "retry_hashtags_prompt",
@@ -167,7 +160,6 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if new_hashtags_str and new_hashtags_str.startswith("#"):
         new_hashtags = parse_hashtags(new_hashtags_str)
 
-        # Update history
         user_id = update.effective_user.id
         history = load_history(user_id)
         for entry in history:
@@ -176,20 +168,16 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         save_history(user_id, history)
 
-        # Reconstruct the original message with the new hashtags
         original_message_text = query.message.text_markdown_v2
-        # Escape hashtags for MarkdownV2 (# must be escaped as \#)
-        escaped_hashtags = " ".join([tag.replace("#", r"\#") for tag in new_hashtags])
-        # Replace ">No Hashtag" with the new hashtags
+        escaped_hashtags = " ".join([tag.replace("#", r"\\#") for tag in new_hashtags])
         updated_text = re.sub(
             r">No Hashtag", ">" + escaped_hashtags, original_message_text
         )
 
-        # Update keyboard to remove the retry button
         keyboard = [
             [
                 InlineKeyboardButton(
-                    "📄 Crea pagina Telegraph",
+                    "📄 Create Telegraph Page",
                     callback_data=f"create_telegraph_page:{article_id}",
                 )
             ]
@@ -200,9 +188,8 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=updated_text, reply_markup=reply_markup, parse_mode="MarkdownV2"
         )
     else:
-        # If it fails again, just show the same message with the button
         await context.bot.answer_callback_query(
             query.id,
-            text="😔 Tentativo fallito. Nessun hashtag generato.",
+            text="😔 Attempt failed. No hashtags generated.",
             show_alert=True,
         )

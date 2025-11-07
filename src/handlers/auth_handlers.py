@@ -16,7 +16,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_authorized(user_id):
         await update.message.reply_text(
-            "🔐 Questo bot è protetto da password. Per favore, inserisci la password per continuare:",
+            "🔐 This bot is password protected. Please enter the password to continue:",
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="HTML",
         )
@@ -26,7 +26,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["url_context"] = False
     reply_markup = get_main_keyboard()
     await update.message.reply_text(
-        "👋 <b>Benvenuto nel bot riassuntore!</b> Inviami un link per iniziare.",
+        "👋 <b>Welcome to the summarizer bot!</b> Send me a link to get started.",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -46,7 +46,7 @@ async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["url_context"] = False
         reply_markup = get_main_keyboard()
         await update.message.reply_text(
-            "<b>Accesso consentito!</b> ✅ Ora puoi usare il bot. Inviami un link per iniziare.",
+            "<b>Access granted!</b> ✅ You can now use the bot. Send me a link to get started.",
             reply_markup=reply_markup,
             parse_mode="HTML",
         )
@@ -54,7 +54,7 @@ async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         print(f"User {user_id} entered wrong password.")
         await update.message.reply_text(
-            "⛔ Password errata. Riprova.", parse_mode="HTML"
+            "⛔ Wrong password. Please try again.", parse_mode="HTML"
         )
         return AUTH
 
@@ -62,6 +62,6 @@ async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels the authentication process."""
     await update.message.reply_text(
-        "❌ Autenticazione annullata. Usa /start per riprovare."
+        "❌ Authentication canceled. Use /start to try again."
     )
     return -1  # ConversationHandler.END

@@ -15,6 +15,7 @@ from core.extractor import ArticleContent
 from core.quota_manager import update_model_usage, wait_for_rate_limit
 from google import genai
 from google.genai import types
+from config import SUMMARY_LANGUAGE
 
 # Carica le variabili d'ambiente dal file .env
 load_dotenv()
@@ -91,7 +92,7 @@ def _call_llm_api(
     for attempt in range(max_retries):
         try:
             print(
-                f"\n--- Tentativo {attempt + 1}/{max_retries} di chiamata all'API di Google Gemini ({model_name})... ---"
+                f"\\n--- Tentativo {attempt + 1}/{max_retries} di chiamata all'API di Google Gemini ({model_name})... ---"
             )
 
             # Crea il client con il nuovo SDK
@@ -215,13 +216,15 @@ async def summarize_article(
         print(f"Errore nella lettura del file di prompt: {e}")
         return None
 
+    template = template.replace("{{summary_language}}", SUMMARY_LANGUAGE)
+
     if "**Contesto dell'articolo:**" in template:
         parts = template.split("**Contesto dell'articolo:**", 1)
         system_instruction = parts[0].strip()
         user_template = "**Contesto dell'articolo:**" + parts[1]
     else:
         system_instruction = template
-        user_template = "**Contesto dell'articolo:**\n{{title}}\n{{text}}"
+        user_template = "**Contesto dell'articolo:**\\n{{title}}\\n{{text}}"
 
     user_prompt = user_template.replace("{{title}}", article.title or "N/A")
     user_prompt = user_prompt.replace("{{author}}", article.author or "N/A")
