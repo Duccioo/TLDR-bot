@@ -85,10 +85,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
 
     if not url:
-        url_pattern = r"https?://[^\s]+"
+        url_pattern = r"https?://[^\s<>\"']+"
         match = re.search(url_pattern, update.message.text)
         if match:
-            url = match.group(0)
+            url = match.group(0).rstrip('.,;!)')
 
     if not url:
         try:
