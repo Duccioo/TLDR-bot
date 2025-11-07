@@ -87,20 +87,43 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
     url = None
 
+    # Log del messaggio originale per debug
+    print(f"DEBUG: Messaggio ricevuto: '{update.message.text}'")
+    print(f"DEBUG: Entities: {update.message.entities}")
+
     if update.message.entities:
+        # Prima cerca text_link (hanno priorità perché sono link espliciti)
         for entity in update.message.entities:
-            if entity.type == "url":
-                url = update.message.text[entity.offset : entity.offset + entity.length]
-                break
-            elif entity.type == "text_link":
+            if entity.type == "text_link":
                 url = entity.url
+                print(f"DEBUG: URL estratto da entity (text_link): '{url}'")
                 break
 
+        # Se non c'è text_link, cerca URL semplici
+        if not url:
+            for entity in update.message.entities:
+                if entity.type == "url":
+                    url = update.message.text[
+                        entity.offset : entity.offset + entity.length
+                    ]
+                    print(f"DEBUG: URL estratto da entity (url): '{url}'")
+                    break
+
     if not url:
-        url_pattern = r"https?://[^\s<>\"']+"
+        # Pattern migliorato che esclude parentesi quadre e altri caratteri comuni
+        url_pattern = r"https?://[^\s<>\"'\[\]]+"
         match = re.search(url_pattern, update.message.text)
         if match:
-            url = match.group(0).rstrip(".,;!)")
+            url = match.group(0).rstrip(".,;!)]")
+            print(f"DEBUG: URL estratto da regex: '{url}'")
+
+    # Pulizia finale dell'URL
+    if url:
+        # Rimuovi caratteri problematici all'inizio e alla fine
+        url = url.strip()
+        # Rimuovi parentesi quadre o altri caratteri alla fine
+        url = re.sub(r"[\[\]]+$", "", url)
+        print(f"DEBUG: URL finale dopo pulizia: '{url}'")
 
     if not url:
         try:
@@ -196,7 +219,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         message_sections = [f"**{random_emoji} {article_title}**"]
         if hashtags_line:
-            message_sections.append(hashtags_line)
+            message_sections.append(">" + hashtags_line)
         if summary_body:
             message_sections.append(summary_body)
         message_sections.append(f"\n_Riassunto generato con {model_name}_")

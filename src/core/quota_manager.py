@@ -6,7 +6,7 @@ import json
 import os
 import time
 from threading import RLock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 request_timestamps = {}
 QUOTA_FILE = os.path.join("data", "quota.json")
@@ -113,7 +113,7 @@ def update_model_usage(model_name: str, token_count: int):
 
             # Aggiunge un dizionario con timestamp e token
             usage_record = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "tokens": token_count,
             }
             data["gemini"][model_name]["usage_timestamps"].append(usage_record)
@@ -130,7 +130,7 @@ def get_quota_summary():
             return "Nessun dato di quota disponibile."
 
         summary = "<b>Riepilogo Quote API Gemini (Free Tier):</b>\n\n"
-        now = datetime.now(datetime.timezone.utc)
+        now = datetime.now(timezone.utc)
         for model, details in data["gemini"].items():
             rpm_limit = details.get("requests_per_minute", 0)
             rpd_limit = details.get("requests_per_day", 0)
@@ -138,22 +138,30 @@ def get_quota_summary():
             timestamps = details.get("usage_timestamps", [])
 
             # Filtra le richieste dell'ultimo minuto
-            recent_requests = [
-                r
-                for r in timestamps
-                if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(minutes=1)
-            ]
+            recent_requests = []
+            for r in timestamps:
+                ts = datetime.fromisoformat(r["timestamp"])
+                # Se il timestamp è naive, aggiungilo il timezone UTC
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if now - ts <= timedelta(minutes=1):
+                    recent_requests.append(r)
+
             rpm_usage = len(recent_requests)
             tpm_usage = sum(r["tokens"] for r in recent_requests)
             rpm_percentage = (rpm_usage / rpm_limit * 100) if rpm_limit > 0 else 0
             tpm_percentage = (tpm_usage / tpm_limit * 100) if tpm_limit > 0 else 0
 
             # Filtra le richieste di oggi
-            today_requests = [
-                r
-                for r in timestamps
-                if now.date() == datetime.fromisoformat(r["timestamp"]).date()
-            ]
+            today_requests = []
+            for r in timestamps:
+                ts = datetime.fromisoformat(r["timestamp"])
+                # Se il timestamp è naive, aggiungilo il timezone UTC
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if now.date() == ts.date():
+                    today_requests.append(r)
+
             rpd_usage = len(today_requests)
             rpd_percentage = (rpd_usage / rpd_limit * 100) if rpd_limit > 0 else 0
 

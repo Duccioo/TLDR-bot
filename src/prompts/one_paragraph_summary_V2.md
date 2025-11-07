@@ -46,7 +46,6 @@ Concludi con:
 - **Tono**: Informativo, diretto, coinvolgente ma professionale
 - **Leggibilità**: Periodi brevi, linguaggio chiaro
 - **Densità informativa**: Ogni frase deve aggiungere valore
-- **Elenchi Nummerati**: Usa solo elenchi numerati, non usare elenchi puntati
 
 
 **Contesto dell'articolo:**

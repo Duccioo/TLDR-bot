@@ -4,17 +4,14 @@ Callback handlers for the Telegram bot.
 
 import random
 import asyncio
+import telegramify_markdown
 from telegram import Update
 from telegram.ext import ContextTypes
-from markdown_it import MarkdownIt
 from core.summarizer import summarize_article
 from core.scraper import crea_articolo_telegraph_with_content
-from utils import format_summary_text, sanitize_html_for_telegram, clean_hashtags_format
+from utils import format_summary_text, clean_hashtags_format
 from config import TITLE_EMOJIS, load_available_models
 from handlers.message_handlers import animate_loading_message
-
-# Initialize Markdown converter
-md = MarkdownIt("commonmark", {"breaks": True, "html": True})
 
 
 async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -99,26 +96,26 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             short_summary_markdown
         )
 
-        html_summary_body = sanitize_html_for_telegram(
-            md.render(short_summary_body)
-        ).strip()
-        html_hashtags = (
-            sanitize_html_for_telegram(md.render(short_summary_hashtags)).strip()
-            if short_summary_hashtags
-            else ""
+        # Costruisci il messaggio completo in Markdown
+        message_sections = [f"**{random_emoji} {article_title}**"]
+        if short_summary_hashtags:
+            message_sections.append(short_summary_hashtags)
+        if short_summary_body:
+            message_sections.append(short_summary_body)
+        message_sections.append(
+            f"📄 [Leggi il riassunto completo qui]({telegraph_url})"
+        )
+        message_sections.append(f"_Riassunto generato con {model_name}_")
+
+        message_markdown = "\n\n".join(
+            section for section in message_sections if section
         )
 
-        message_chunks = [f"<b>{random_emoji} {article_title}</b>"]
-        if html_hashtags:
-            message_chunks.append(html_hashtags)
-        if html_summary_body:
-            message_chunks.append(html_summary_body)
-        message_chunks.append(
-            f'📄 <a href="{telegraph_url}">Leggi il riassunto completo qui</a>'
+        # Converti in formato Telegram usando telegramify
+        message_text = telegramify_markdown.markdownify(
+            message_markdown,
+            normalize_whitespace=False,
         )
-        message_chunks.append(f"<i>Riassunto generato con {model_name}</i>")
-
-        message_text = "\n\n".join(chunk for chunk in message_chunks if chunk)
 
         stop_animation_event.set()
         await animation_task
@@ -127,7 +124,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             chat_id=query.message.chat_id,
             message_id=query.message.message_id,
             text=message_text,
-            parse_mode="HTML",
+            parse_mode="MarkdownV2",
         )
         await context.bot.delete_message(
             chat_id=query.message.chat_id, message_id=processing_message.message_id
