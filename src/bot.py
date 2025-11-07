@@ -67,7 +67,7 @@ def setup_handlers(application: Application):
     # Add conversation handler for choosing a prompt
     prompt_conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^📝 Scegli Prompt$"), choose_prompt_start)
+            MessageHandler(filters.Regex("^📝 Choose Prompt$"), choose_prompt_start)
         ],
         states={
             CHOOSE_PROMPT: [
@@ -81,13 +81,11 @@ def setup_handlers(application: Application):
     # Add conversation handler for choosing a model
     model_conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^🤖 Cambia Modello$"), choose_model_start)
+            MessageHandler(filters.Regex("^🤖 Change Model$"), choose_model_start)
         ],
         states={
             CHOOSE_MODEL: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND, model_selection_submenu
-                )
+                MessageHandler(filters.TEXT & ~filters.COMMAND, model_selection_submenu)
             ],
             SELECT_SHORT_SUMMARY_MODEL: [
                 MessageHandler(
@@ -106,7 +104,7 @@ def setup_handlers(application: Application):
 
     # Add handler for API quota
     application.add_handler(
-        MessageHandler(filters.Regex("^📊 Quota API Gemini$"), api_quota)
+        MessageHandler(filters.Regex("^📊 Gemini API Quota$"), api_quota)
     )
 
     # Add handlers for toggling features
@@ -117,11 +115,7 @@ def setup_handlers(application: Application):
         MessageHandler(filters.Regex("^🔗 URL Context On/Off$"), toggle_url_context)
     )
 
-    # Add handler for URL messages
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, summarize_url)
-    )
-
+    # Add callback handlers BEFORE the generic message handler
     # Add callback handler for Telegraph page creation
     application.add_handler(
         CallbackQueryHandler(generate_telegraph_page, pattern="^create_telegraph_page:")
@@ -129,6 +123,11 @@ def setup_handlers(application: Application):
     # Add callback handler for retrying hashtags
     application.add_handler(
         CallbackQueryHandler(retry_hashtags, pattern="^retry_hashtags:")
+    )
+
+    # Add handler for URL messages (MUST be last to avoid catching everything)
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, summarize_url)
     )
 
 
