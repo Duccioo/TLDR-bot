@@ -39,7 +39,7 @@ from handlers.conversation_handlers import (
     cancel,
 )
 from handlers.message_handlers import summarize_url
-from handlers.callback_handlers import generate_telegraph_page
+from handlers.callback_handlers import generate_telegraph_page, retry_hashtags
 
 
 def signal_handler(sig, frame):
@@ -125,6 +125,10 @@ def setup_handlers(application: Application):
     # Add callback handler for Telegraph page creation
     application.add_handler(
         CallbackQueryHandler(generate_telegraph_page, pattern="^create_telegraph_page:")
+    )
+    # Add callback handler for retrying hashtags
+    application.add_handler(
+        CallbackQueryHandler(retry_hashtags, pattern="^retry_hashtags:")
     )
 
 
