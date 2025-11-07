@@ -58,7 +58,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         use_url_context = context.user_data.get("url_context", False)
         technical_summary_prompt = context.user_data.get("prompt", "technical_summary")
 
-        technical_summary_data = summarize_article(
+        technical_summary_data = await summarize_article(
             article_content,
             summary_type=technical_summary_prompt,
             model_name=model_name,
@@ -72,7 +72,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         technical_summary = technical_summary_data.get("summary")
         image_urls = technical_summary_data.get("images")
 
-        telegraph_url = crea_articolo_telegraph_with_content(
+        telegraph_url = await crea_articolo_telegraph_with_content(
             title=article_content.title or "Summary",
             content=technical_summary,
             author_name=article_content.author or "Summarizer Bot",

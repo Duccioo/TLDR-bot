@@ -71,7 +71,7 @@ def crea_articolo_telegraph(
         return None
 
 
-def crea_articolo_telegraph_with_content(
+async def crea_articolo_telegraph_with_content(
     title: str,
     content: str,
     author_name: Optional[str] = None,
@@ -79,39 +79,40 @@ def crea_articolo_telegraph_with_content(
     original_url: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Pubblica il contenuto (in Markdown) e le immagini su Telegra.ph.
-    Converte il Markdown in HTML e aggiunge il link alla fonte originale.
+    Pubblica il contenuto (in Markdown) e le immagini su Telegra.ph in modo asincrono.
     """
     html_content = ""
 
-    # Aggiungi immagini in cima, se presenti
     if image_urls:
         for url in image_urls:
             html_content += f"<figure><img src='{url}'></figure>"
 
-    # Converti il contenuto principale da Markdown a HTML e sanificalo
     main_html_content = markdown_to_html(content)
     sanitized_content = sanitize_for_telegraph(main_html_content)
     html_content += sanitized_content
 
-    # Aggiungi una linea di separazione e il link all'articolo originale
     if original_url:
         html_content += f'<hr><p><i>Fonte originale: <a href="{original_url}">{original_url}</a></i></p>'
 
-    try:
-        telegraph = Telegraph()
-        telegraph.create_account(short_name="Python Bot")
-        response = telegraph.create_page(
-            title=title,
-            html_content=html_content,
-            author_name=author_name or "Automation Bot",
-        )
-        url_creato = response["url"]
+    def _create_page_sync():
+        try:
+            telegraph = Telegraph()
+            telegraph.create_account(short_name="Python Bot")
+            response = telegraph.create_page(
+                title=title,
+                html_content=html_content,
+                author_name=author_name or "Automation Bot",
+            )
+            return response["url"]
+        except TelegraphException as e:
+            print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
+            return None
+
+    url_creato = await asyncio.to_thread(_create_page_sync)
+    if url_creato:
         print(f"✓ Articolo creato con successo su Telegra.ph: {url_creato}")
-        return url_creato
-    except TelegraphException as e:
-        print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
-        return None
+
+    return url_creato
 
 
 # --- ESEMPIO DI UTILIZZO DEL NUOVO MODULO SUMMARIZER ---
