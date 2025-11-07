@@ -204,15 +204,39 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # --- NUOVA LOGICA HASHTAG E STORIA ---
 
-        # 1. Estrai hashtag dalla risposta LLM
+        # 1. Estrai hashtag dalla risposta LLM (sia all'inizio che nel corpo del testo)
         llm_hashtags = []
         summary_text_clean = one_paragraph_summary
 
+        # Cerca hashtag all'inizio del testo
         hashtag_match = re.match(r"^(#\S+(?:\s+#\S+)*)\s*", one_paragraph_summary)
         if hashtag_match:
             hashtag_line = hashtag_match.group(1)
             llm_hashtags = parse_hashtags(hashtag_line)
             summary_text_clean = one_paragraph_summary[hashtag_match.end() :].strip()
+
+        # Rimuovi anche eventuali hashtag sparsi nel testo (dopo emoji o sezioni)
+        # Questo pattern cattura righe che iniziano con emoji + hashtag o solo hashtag
+        summary_text_clean = re.sub(
+            r"^(?:[^\n]*?)\s*(#\S+(?:\s+#\S+)*)\s*$",
+            lambda m: (
+                m.group(0).replace(m.group(1), "").strip() if m.group(1) else m.group(0)
+            ),
+            summary_text_clean,
+            flags=re.MULTILINE,
+        )
+
+        # Cerca anche hashtag nel formato "📌 #tag1 #tag2"
+        embedded_hashtag_match = re.search(
+            r"📌\s*(#\S+(?:\s+#\S+)*)", summary_text_clean
+        )
+        if embedded_hashtag_match:
+            embedded_hashtags = parse_hashtags(embedded_hashtag_match.group(1))
+            llm_hashtags.extend(embedded_hashtags)
+            # Rimuovi la riga degli hashtag dal testo
+            summary_text_clean = re.sub(
+                r"\n?.*?📌\s*#\S+(?:\s+#\S+)*.*?\n?", "\n", summary_text_clean
+            ).strip()
 
         # 2. Controlla se l'articolo originale ha già dei tag
         final_hashtags = []
@@ -242,7 +266,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_sections = [f"**{random_emoji} {article_title}**"]
 
         if no_hashtags_found:
-            message_sections.insert(0, ">No Hashtag")
+            message_sections.append(">No Hashtag")
         else:
             hashtags_line = " ".join(final_hashtags)
             message_sections.append(">" + hashtags_line)

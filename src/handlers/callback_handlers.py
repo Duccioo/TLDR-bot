@@ -178,9 +178,11 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Reconstruct the original message with the new hashtags
         original_message_text = query.message.text_markdown_v2
+        # Escape hashtags for MarkdownV2 (# must be escaped as \#)
+        escaped_hashtags = " ".join([tag.replace("#", r"\#") for tag in new_hashtags])
         # Replace ">No Hashtag" with the new hashtags
         updated_text = re.sub(
-            r">No Hashtag", ">" + " ".join(new_hashtags), original_message_text
+            r">No Hashtag", ">" + escaped_hashtags, original_message_text
         )
 
         # Update keyboard to remove the retry button
