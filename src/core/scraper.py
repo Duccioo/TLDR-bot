@@ -36,6 +36,46 @@ def markdown_to_html(markdown_text: str) -> str:
     html = md.render(markdown_text)
     # Rimuove i tag <p> e </p> per un maggiore controllo sulla spaziatura
     html = html.replace("<p>", "").replace("</p>", "<br>")
+
+    # Sanifica eventuali tag non bilanciati che potrebbero causare errori
+    html = fix_unbalanced_tags(html)
+
+    return html
+
+
+def fix_unbalanced_tags(html: str) -> str:
+    """
+    Bilancia i tag HTML non chiusi correttamente (em, strong, i, b, etc.).
+    """
+    # Conta e bilancia i tag <em> e <i> (corsivo)
+    html = balance_tag(html, "em")
+    html = balance_tag(html, "i")
+    html = balance_tag(html, "strong")
+    html = balance_tag(html, "b")
+    html = balance_tag(html, "u")
+    html = balance_tag(html, "s")
+
+    return html
+
+
+def balance_tag(html: str, tag: str) -> str:
+    """
+    Bilancia un singolo tipo di tag HTML.
+    """
+    open_tag = f"<{tag}>"
+    close_tag = f"</{tag}>"
+
+    open_count = html.count(open_tag)
+    close_count = html.count(close_tag)
+
+    if open_count > close_count:
+        # Aggiungi tag di chiusura mancanti alla fine
+        html += close_tag * (open_count - close_count)
+    elif close_count > open_count:
+        # Rimuovi tag di chiusura in eccesso
+        for _ in range(close_count - open_count):
+            html = html.replace(close_tag, "", 1)
+
     return html
 
 
@@ -74,6 +114,15 @@ async def crea_articolo_telegraph_with_content(
             return response["url"]
         except TelegraphException as e:
             print(f"Errore durante la pubblicazione su Telegra.ph: {e}")
+            # Logga anche un estratto del contenuto per debug
+            print(f"Lunghezza contenuto HTML: {len(html_content)} caratteri")
+            if len(html_content) > 1500:
+                print(f"Estratto contenuto (byte 1500-1700): {html_content[1500:1700]}")
+            return None
+        except Exception as e:
+            print(
+                f"Errore generico durante la creazione della pagina Telegraph: {type(e).__name__}: {e}"
+            )
             return None
 
     url_creato = await asyncio.to_thread(_create_page_sync)

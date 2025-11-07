@@ -83,7 +83,6 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             hashtags_line = " ".join(hashtags)
             telegraph_content = f"{hashtags_line}\n\n{technical_summary}".strip()
 
-
         telegraph_url = await crea_articolo_telegraph_with_content(
             title=article_content.title or "Summary",
             content=telegraph_content,
@@ -92,17 +91,20 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             original_url=article_content.url,
         )
 
-        # Reconstruct the original message and append the Telegraph link
-        original_message_text = query.message.text_markdown_v2
-        updated_text = f"{original_message_text}\n\n📄 [Leggi il riassunto completo qui]({telegraph_url})"
+        # Get the original message text and convert from MarkdownV2 to HTML
+        original_message_text = query.message.text_html
 
+        # Append the Telegraph link as plain text to enable preview
+        updated_text = f'{original_message_text}\n\n📄 <a href="{telegraph_url}">Riassunto completo:</a>'
+
+        # Edit the message with the Telegraph link
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
             message_id=query.message.message_id,
             text=updated_text,
-            parse_mode="MarkdownV2",
-            disable_web_page_preview=True,
-            reply_markup=None # Remove keyboard after creating the page
+            parse_mode="HTML",
+            disable_web_page_preview=False,  # Enable preview
+            reply_markup=None,  # Remove keyboard after creating the page
         )
 
     except Exception as e:
@@ -122,8 +124,11 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         await context.bot.delete_message(
             chat_id=query.message.chat_id, message_id=processing_message.message_id
         )
-        if 'articles' in context.user_data and article_id in context.user_data['articles']:
-            del context.user_data['articles'][article_id]
+        if (
+            "articles" in context.user_data
+            and article_id in context.user_data["articles"]
+        ):
+            del context.user_data["articles"][article_id]
 
 
 async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -139,16 +144,16 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     article_data = context.user_data.get("articles", {}).get(article_id)
     if not article_data or "article_content" not in article_data:
-        await query.edit_message_text("🤖 ERRORE: Dati dell'articolo scaduti o non trovati. Riprova a inviare l'URL.")
+        await query.edit_message_text(
+            "🤖 ERRORE: Dati dell'articolo scaduti o non trovati. Riprova a inviare l'URL."
+        )
         return
 
     article_content = article_data["article_content"]
 
     # Use the same model as the short summary for consistency
     default_model = (
-        load_available_models()[0]
-        if load_available_models()
-        else "gemini-1.5-flash"
+        load_available_models()[0] if load_available_models() else "gemini-1.5-flash"
     )
     model_name = context.user_data.get("short_summary_model", default_model)
 
@@ -176,26 +181,28 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Reconstruct the original message with the new hashtags
         original_message_text = query.message.text_markdown_v2
         # Replace ">No Hashtag" with the new hashtags
-        updated_text = re.sub(r">No Hashtag", ">" + " ".join(new_hashtags), original_message_text)
+        updated_text = re.sub(
+            r">No Hashtag", ">" + " ".join(new_hashtags), original_message_text
+        )
 
         # Update keyboard to remove the retry button
-        keyboard = [[
-            InlineKeyboardButton(
-                "📄 Crea pagina Telegraph",
-                callback_data=f"create_telegraph_page:{article_id}",
-            )
-        ]]
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "📄 Crea pagina Telegraph",
+                    callback_data=f"create_telegraph_page:{article_id}",
+                )
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
-            text=updated_text,
-            reply_markup=reply_markup,
-            parse_mode="MarkdownV2"
+            text=updated_text, reply_markup=reply_markup, parse_mode="MarkdownV2"
         )
     else:
         # If it fails again, just show the same message with the button
         await context.bot.answer_callback_query(
             query.id,
             text="😔 Tentativo fallito. Nessun hashtag generato.",
-            show_alert=True
+            show_alert=True,
         )

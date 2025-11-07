@@ -249,17 +249,12 @@ async def summarize_article(
         model_name=model_name,
         tools=tools or None,
     )
-    
+
     summary_text = llm_response["summary"]
     token_count = llm_response["token_count"]
 
     if "ERRORE:" not in summary_text:
         await asyncio.to_thread(update_model_usage, model_name, token_count)
-
-        if not article.tags:
-            hashtags = await asyncio.to_thread(generate_hashtags, article, summary_text)
-            if hashtags:
-                summary_text += f"\n\n---\n**Hashtag:**\n{hashtags}"
 
     return {
         "summary": summary_text,
