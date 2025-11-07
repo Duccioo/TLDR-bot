@@ -13,6 +13,7 @@ load_dotenv()
 # Get the Telegram bot token from the environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
+SUMMARY_LANGUAGE = os.getenv("SUMMARY_LANGUAGE", "English")
 
 # Paths
 PROMPTS_FOLDER = os.path.join("src", "prompts")

@@ -1,177 +1,85 @@
-# TLDR-bot
+# Article Summarizer Telegram Bot
 
-Bot per estrarre, riassumere e pubblicare articoli web utilizzando Trafilatura e Google Gemini.
+This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using the Google Gemini large language model.
 
-## 🚀 Caratteristiche
+## Features
 
-- **Estrazione contenuti**: Estrai testo, metadati e immagini da qualsiasi URL
-- **Formati multipli**: Supporto per Markdown, HTML e testo semplice
-- **Riassunti AI**: Genera riassunti intelligenti con Google Gemini
-- **Pubblicazione Telegraph**: Pubblica automaticamente su Telegra.ph
-- **Hashtag intelligenti**: Generazione automatica di hashtag rilevanti
-- **🆕 Formattazione Avanzata**: Sistema intelligente che preserva abbreviazioni (Dr., Inc., MJ.) e numeri
+- **Article Scraping**: Extracts the main content from any given URL.
+- **AI-Powered Summaries**: Utilizes Google's Gemini models to generate high-quality, human-like summaries.
+- **Customizable Prompts**: Supports multiple, customizable prompt templates to generate different summary styles (e.g., technical, ELI5, social media posts).
+- **Configurable Models**: Allows users to choose from different Gemini models for summary generation.
+- **Configurable Summary Language**: Allows users to set the output language for summaries via an environment variable.
+- **Web Search Integration**: Can perform a web search to gather more context for the summary.
+- **Telegraph Integration**: Publishes long-form summaries as clean, readable Telegraph pages.
+- **API Quota Management**: Tracks API usage to prevent exceeding rate limits.
+- **Password Protection**: Secures access to the bot with a password.
+- **Docker Support**: Includes `Dockerfile` and `docker-compose.yml` for easy deployment.
 
-## 📦 Installazione
+## Quick Start
 
-1. Clona il repository:
-```bash
-git clone https://github.com/Duccioo/TLDR-bot.git
-cd TLDR-bot
-```
+### 1. Prerequisites
 
-2. Installa le dipendenze:
-```bash
-pip install -r requirements.txt
-```
+- Python 3.11+
+- Docker (optional)
 
-3. Configura le variabili d'ambiente:
-```bash
-cp .env.example .env
-```
+### 2. Installation
 
-4. Modifica il file `.env` e aggiungi la tua API key di Google Gemini:
-```bash
-GEMINI_API_KEY=your_gemini_api_key_here
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-repo/article-summarizer-bot.git
+    cd article-summarizer-bot
+    ```
 
-> 💡 Ottieni la tua chiave API gratuita da: https://makersuite.google.com/app/apikey
+2.  **Create a `.env` file:**
+    Copy the example file and fill in your credentials:
+    ```bash
+    cp .env.example .env
+    ```
 
-## 📚 Struttura del Progetto
+    You will need to provide:
+    - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token.
+    - `GEMINI_API_KEY`: Your Google Gemini API key.
+    - `BOT_PASSWORD`: A password to protect your bot (optional).
+    - `SUMMARY_LANGUAGE`: The desired language for the summaries (e.g., "English", "Italian"). Defaults to "English".
 
-```
-TLDR-bot/
-├── src/
-│   ├── bot.py                # 🆕 Entry point del bot (modulare)
-│   ├── config.py             # 🆕 Configurazione centralizzata
-│   ├── decorators.py         # 🆕 Decoratori personalizzati
-│   ├── keyboards.py          # 🆕 Definizione tastiere Telegram
-│   ├── utils.py              # Funzioni di utilità
-│   ├── handlers/             # 🆕 Gestori modulari del bot
-│   │   ├── auth_handlers.py
-│   │   ├── command_handlers.py
-│   │   ├── conversation_handlers.py
-│   │   ├── message_handlers.py
-│   │   └── callback_handlers.py
-│   ├── core/
-│   │   ├── extractor.py      # Funzioni di estrazione contenuti
-│   │   ├── summarizer.py     # Generazione riassunti con Gemini
-│   │   ├── scraper.py        # Pubblicazione su Telegra.ph
-│   │   ├── quota_manager.py  # Gestione quote API
-│   │   └── rate_limiter.py   # Rate limiting
-│   ├── prompts/              # Template dei prompt
-│   └── data/
-│       └── quota.json        # Dati sulle quote API
-├── docs/                     # Documentazione dettagliata
-├── STRUCTURE.md              # 🆕 Documentazione struttura modulare
-├── MIGRATION.md              # 🆕 Guida alla migrazione
-├── test_structure.py         # 🆕 Test della nuova struttura
-├── .env.example              # Template variabili d'ambiente
-├── requirements.txt          # Dipendenze Python
-└── README.md                 # Questo file
-```
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
+### 3. Running the Bot
 
-## 🎯 Utilizzo
+#### Without Docker
 
-### Bot Telegram
-
-#### Avvio del bot (Nuova Struttura Modulare) ✅
 ```bash
 python src/bot.py
 ```
 
-#### Avvio del bot (Vecchio Metodo - Ancora Funzionante)
+#### With Docker
+
 ```bash
-python src/telegram_bot.py
+docker-compose up -d
 ```
 
-Il bot Telegram offre:
-- 📝 Selezione prompt personalizzati
-- 🤖 Cambio modello AI
-- 🌐 Ricerca web opzionale
-- 🔗 Contesto URL
-- 📊 Monitoraggio quota API
+## Usage
 
-### Estrazione Contenuti
+1.  **Start a chat with your bot** on Telegram and enter the password if you have set one.
+2.  **Send a URL** of an article you want to summarize.
+3.  The bot will reply with a short summary and a button to generate a full Telegraph page.
+4.  Use the keyboard commands to:
+    - **Choose Prompt**: Select a different summary style.
+    - **Change Model**: Switch between different Gemini models.
+    - **Toggle Web Search**: Enable or disable web search for more context.
+    - **Check API Quota**: View your current Gemini API usage.
 
-```python
-from src.core.extractor import estrai_come_markdown, estrai_contenuto_da_url
+## Project Structure
 
-# Estrai in formato Markdown
-markdown = estrai_come_markdown("https://example.com/article")
-print(markdown)
-
-# Estrai contenuto strutturato
-article = estrai_contenuto_da_url("https://example.com/article")
-print(f"Titolo: {article.title}")
-print(f"Autore: {article.author}")
-print(f"Testo: {article.text}")
-```
-
-### Riassunti con AI
-
-```python
-from src.core.extractor import estrai_contenuto_da_url
-from src.core.summarizer import summarize_article
-
-# Estrai l'articolo
-article = estrai_contenuto_da_url("https://example.com/article")
-
-# Genera un riassunto
-summary = summarize_article(
-    article=article,
-    summary_type="brief",  # o altro tipo di prompt
-    model_name="gemini-1.5-flash"
-)
-print(summary)
-```
-
-### Pubblicazione su Telegraph
-
-```python
-from src.core.scraper import crea_articolo_telegraph
-
-# Pubblica direttamente da un URL
-telegraph_url = crea_articolo_telegraph(
-    "https://example.com/article",
-    author_name="Bot TLDR"
-)
-print(f"Articolo pubblicato: {telegraph_url}")
-```
-
-## 🔧 Configurazione
-
-### Modelli Gemini Disponibili
-
-- `gemini-1.5-flash` (default): Veloce ed economico
-- `gemini-1.5-pro`: Più potente, per compiti complessi
-- `gemini-pro`: Versione stabile precedente
-
-### Personalizzazione Prompt
-
-I prompt per i riassunti si trovano in `src/bot/prompts/`. Puoi creare i tuoi template usando variabili come:
-
-- `{{title}}` - Titolo dell'articolo
-- `{{text}}` - Testo completo
-- `{{author}}` - Autore
-- `{{date}}` - Data di pubblicazione
-- `{{url}}` - URL originale
-- `{{sitename}}` - Nome del sito
-
-## 📖 Documentazione Completa
-
-Per la documentazione dettagliata di tutte le funzioni, consulta la cartella [docs](docs/).
-
-## 🛠️ Requisiti
-
-- Python 3.8+
-- Connessione internet
-- API Key Google Gemini (gratuita)
-
-## 📝 Licenza
-
-MIT License - vedi il file [LICENSE](LICENSE) per i dettagli.
-
-## 🤝 Contributi
-
-I contributi sono benvenuti! Sentiti libero di aprire issue o pull request.
+- `src/`: Main source code directory.
+  - `core/`: Core logic for scraping, summarizing, and managing history.
+  - `handlers/`: Telegram bot command and message handlers.
+  - `prompts/`: Customizable prompt templates for the LLM.
+- `data/`: Data files, including API quota and user history.
+- `docs/`: In-depth documentation.
+- `Dockerfile`: For building the bot's Docker image.
+- `docker-compose.yml`: For running the bot with Docker Compose.
+- `requirements.txt`: Python dependencies.

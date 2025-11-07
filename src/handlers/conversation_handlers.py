@@ -23,26 +23,26 @@ from config import (
 async def model_selection_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the model selection submenu."""
     text = update.message.text
-    if text.startswith("📄 Modello riassunto breve:"):
+    if text.startswith("📄 Short summary model:"):
         reply_markup = get_model_keyboard()
         await update.message.reply_text(
-            "🤖 Scegli un modello per il riassunto breve:",
+            "🤖 Choose a model for the short summary:",
             reply_markup=reply_markup,
             parse_mode="HTML",
         )
         return SELECT_SHORT_SUMMARY_MODEL
-    elif text.startswith("📝 Modello pagina Telegraph:"):
+    elif text.startswith("📝 Telegraph page model:"):
         reply_markup = get_model_keyboard()
         await update.message.reply_text(
-            "🤖 Scegli un modello per la pagina Telegraph:",
+            "🤖 Choose a model for the Telegraph page:",
             reply_markup=reply_markup,
             parse_mode="HTML",
         )
         return SELECT_TELEGRAPH_SUMMARY_MODEL
-    elif text == "⬅️ Torna al menu principale":
+    elif text == "⬅️ Back to main menu":
         reply_markup = get_main_keyboard()
         await update.message.reply_text(
-            "⬅️ Torno al menu principale.",
+            "⬅️ Returning to the main menu.",
             reply_markup=reply_markup,
             parse_mode="HTML",
         )
@@ -57,7 +57,7 @@ async def short_summary_model_chosen(update: Update, context: ContextTypes.DEFAU
     context.user_data["short_summary_model"] = model
     reply_markup = get_model_selection_submenu_keyboard(context)
     await update.message.reply_text(
-        f"👍 Modello per il riassunto breve impostato su: <b>{model}</b>",
+        f"👍 Short summary model set to: <b>{model}</b>",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -73,7 +73,7 @@ async def telegraph_summary_model_chosen(
     context.user_data["telegraph_summary_model"] = model
     reply_markup = get_model_selection_submenu_keyboard(context)
     await update.message.reply_text(
-        f"👍 Modello per la pagina Telegraph impostato su: <b>{model}</b>",
+        f"👍 Telegraph page model set to: <b>{model}</b>",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -85,7 +85,7 @@ async def choose_prompt_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Starts the conversation to choose a prompt."""
     reply_markup = get_prompt_keyboard()
     await update.message.reply_text(
-        "📝 Scegli un prompt per il riassunto:",
+        "📝 Choose a prompt for the summary:",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -99,7 +99,7 @@ async def prompt_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["prompt"] = prompt
     reply_markup = get_main_keyboard()
     await update.message.reply_text(
-        f"👍 Prompt impostato su: <b>{prompt}</b>",
+        f"👍 Prompt set to: <b>{prompt}</b>",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -111,7 +111,7 @@ async def choose_model_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Starts the conversation to choose a model."""
     reply_markup = get_model_selection_submenu_keyboard(context)
     await update.message.reply_text(
-        "🤖 Scegli quale modello modificare:",
+        "🤖 Choose which model to edit:",
         reply_markup=reply_markup,
         parse_mode="HTML",
     )
@@ -122,6 +122,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels the conversation."""
     reply_markup = get_main_keyboard()
     await update.message.reply_text(
-        "❌ Operazione annullata.", reply_markup=reply_markup
+        "❌ Operation cancelled.", reply_markup=reply_markup
     )
     return ConversationHandler.END

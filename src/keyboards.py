@@ -9,9 +9,9 @@ from config import load_available_models, load_available_prompts
 def get_main_keyboard():
     """Returns the main keyboard layout."""
     keyboard = [
-        ["📝 Scegli Prompt", "🤖 Cambia Modello"],
+        ["📝 Choose Prompt", "🤖 Change Model"],
         ["🌐 Web Search On/Off", "🔗 URL Context On/Off"],
-        ["📊 Quota API Gemini"],
+        ["📊 Gemini API Quota"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -34,9 +34,9 @@ def get_model_selection_submenu_keyboard(context):
     telegraph_summary_model = user_data.get("telegraph_summary_model", default_model)
 
     keyboard = [
-        [f"📄 Modello riassunto breve: {short_summary_model}"],
-        [f"📝 Modello pagina Telegraph: {telegraph_summary_model}"],
-        ["⬅️ Torna al menu principale"],
+        [f"📄 Short summary model: {short_summary_model}"],
+        [f"📝 Telegraph page model: {telegraph_summary_model}"],
+        ["⬅️ Back to main menu"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

@@ -23,29 +23,19 @@ async def animate_loading_message(
     context, chat_id, message_id, stop_event, fallback_mode=False
 ):
     """
-    Anima un messaggio di caricamento.
-    Usa emoji di orologio di default o una sequenza "arrabbiata" in modalità fallback.
+    Animates a loading message.
+    Uses clock emojis by default or an "angry" sequence in fallback mode.
     """
-    base_text = "Elaborazione in corso"
+    base_text = "Processing in progress"
     dots = ""
 
     if fallback_mode:
         emojis = ["😊", "😐", "😠", "😡"]
-        base_text = "Estrazione standard fallita, uso il metodo alternativo"
+        base_text = "Standard extraction failed, using alternative method"
     else:
         emojis = [
-            "🕐",
-            "🕑",
-            "🕒",
-            "🕓",
-            "🕔",
-            "🕕",
-            "🕖",
-            "🕗",
-            "🕘",
-            "🕙",
-            "🕚",
-            "🕛",
+            "🕐", "🕑", "🕒", "🕓", "🕔", "🕕",
+            "🕖", "🕗", "🕘", "🕙", "🕚", "🕛",
         ]
 
     emoji_index = 0
@@ -56,13 +46,10 @@ async def animate_loading_message(
         dots = "." * ((len(dots) + 1) % 4)
         emoji = emojis[emoji_index]
 
-        # Aggiorna l'indice dell'emoji
         if fallback_mode:
-            # L'animazione arrabbiata progredisce fino all'ultimo emoji e si ferma lì
             if emoji_index < len(emojis) - 1:
                 emoji_index += 1
         else:
-            # L'animazione dell'orologio va in loop
             emoji_index = (emoji_index + 1) % len(emojis)
 
         try:
@@ -74,11 +61,10 @@ async def animate_loading_message(
             )
         except Exception as e:
             if "Message to edit not found" in str(e):
-                print("Animazione interrotta: messaggio non trovato.")
+                print("Animation stopped: message not found.")
                 break
-            # Non loggare l'errore se il messaggio è identico, è normale
             if "Message is not modified" not in str(e):
-                print(f"Errore durante l'animazione: {e}")
+                print(f"Error during animation: {e}")
 
         await asyncio.sleep(0.8 if fallback_mode else 0.5)
 
@@ -89,13 +75,11 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = None
 
     if update.message.entities:
-        # Prima cerca text_link (hanno priorità perché sono link espliciti)
         for entity in update.message.entities:
             if entity.type == "text_link":
                 url = entity.url
                 break
 
-        # Se non c'è text_link, cerca URL semplici
         if not url:
             for entity in update.message.entities:
                 if entity.type == "url":
@@ -105,46 +89,40 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     break
 
     if not url:
-        # Pattern migliorato che esclude parentesi quadre e altri caratteri comuni
         url_pattern = r"https?://[^\s<>\"'\[\]]+"
         match = re.search(url_pattern, update.message.text)
         if match:
             url = match.group(0).rstrip(".,;!)]")
 
-    # Pulizia finale dell'URL
     if url:
-        # Rimuovi caratteri problematici all'inizio e alla fine
         url = url.strip()
-        # Rimuovi parentesi quadre o altri caratteri alla fine
         url = re.sub(r"[\[\]]+$", "", url)
 
     if not url:
         try:
             await update.message.reply_text(
-                "🔗 Per favore, invia un URL valido.", parse_mode="HTML"
+                "🔗 Please send a valid URL.", parse_mode="HTML"
             )
         except NetworkError as e:
-            print(f"Errore di rete nell'invio del messaggio di URL non valido: {e}")
+            print(f"Network error sending invalid URL message: {e}")
         return
 
     try:
         processing_message = await update.message.reply_text(
-            "⏳ Elaborazione dell'URL in corso...",
+            "⏳ Processing URL...",
             parse_mode="HTML",
             disable_notification=True,
         )
     except NetworkError as e:
-        print(f"Errore di rete nell'invio del messaggio di elaborazione: {e}")
-        return  # Interrompi se non possiamo nemmeno inviare il messaggio iniziale
+        print(f"Network error sending processing message: {e}")
+        return
 
     stop_animation_event = asyncio.Event()
-    animation_task = None  # Inizializza a None
+    animation_task = None
 
     try:
-        # Esegui lo scraping e ottieni il contenuto e lo stato del fallback
         article_content, fallback_used = await scrape_article(url)
 
-        # Avvia l'animazione DOPO aver determinato se usare il fallback
         animation_task = asyncio.create_task(
             animate_loading_message(
                 context,
@@ -163,12 +141,12 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.edit_message_text(
                     chat_id=update.effective_chat.id,
                     message_id=processing_message.message_id,
-                    text="😥 Impossibile estrarre il contenuto dall'URL.",
+                    text="😥 Could not extract content from the URL.",
                     parse_mode="HTML",
                 )
             except NetworkError as e:
                 print(
-                    f"Errore di rete nel tentativo di aggiornare il messaggio di errore scraping: {e}"
+                    f"Network error trying to update scraping error message: {e}"
                 )
             return
 
@@ -188,7 +166,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         use_web_search = context.user_data.get("web_search", False)
         use_url_context = context.user_data.get("url_context", False)
 
-        # Genera il riassunto
         one_paragraph_summary_data = await summarize_article(
             article_content,
             "one_paragraph_summary_V2",
@@ -198,25 +175,19 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if not one_paragraph_summary_data:
-            raise ValueError("Impossibile generare il riassunto.")
+            raise ValueError("Could not generate summary.")
 
         one_paragraph_summary = one_paragraph_summary_data.get("summary")
 
-        # --- NUOVA LOGICA HASHTAG E STORIA ---
-
-        # 1. Estrai hashtag dalla risposta LLM (sia all'inizio che nel corpo del testo)
         llm_hashtags = []
         summary_text_clean = one_paragraph_summary
 
-        # Cerca hashtag all'inizio del testo
         hashtag_match = re.match(r"^(#\S+(?:\s+#\S+)*)\s*", one_paragraph_summary)
         if hashtag_match:
             hashtag_line = hashtag_match.group(1)
             llm_hashtags = parse_hashtags(hashtag_line)
             summary_text_clean = one_paragraph_summary[hashtag_match.end() :].strip()
 
-        # Rimuovi anche eventuali hashtag sparsi nel testo (dopo emoji o sezioni)
-        # Questo pattern cattura righe che iniziano con emoji + hashtag o solo hashtag
         summary_text_clean = re.sub(
             r"^(?:[^\n]*?)\s*(#\S+(?:\s+#\S+)*)\s*$",
             lambda m: (
@@ -226,19 +197,16 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             flags=re.MULTILINE,
         )
 
-        # Cerca anche hashtag nel formato "📌 #tag1 #tag2"
         embedded_hashtag_match = re.search(
             r"📌\s*(#\S+(?:\s+#\S+)*)", summary_text_clean
         )
         if embedded_hashtag_match:
             embedded_hashtags = parse_hashtags(embedded_hashtag_match.group(1))
             llm_hashtags.extend(embedded_hashtags)
-            # Rimuovi la riga degli hashtag dal testo
             summary_text_clean = re.sub(
                 r"\n?.*?📌\s*#\S+(?:\s+#\S+)*.*?\n?", "\n", summary_text_clean
             ).strip()
 
-        # 2. Controlla se l'articolo originale ha già dei tag
         final_hashtags = []
         if article_content.tags:
             final_hashtags = [
@@ -247,21 +215,17 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             final_hashtags = llm_hashtags
 
-        # Store summary and hashtags for Telegraph generation
         context.user_data["articles"][article_id][
             "one_paragraph_summary"
         ] = summary_text_clean
         context.user_data["articles"][article_id]["hashtags"] = final_hashtags
 
-        # 3. Salva nella cronologia
         user_id = update.effective_user.id
         add_to_history(user_id, url, summary_text_clean, final_hashtags)
 
-        # 4. Prepara il messaggio
         no_hashtags_found = not final_hashtags
-
         formatted_summary = format_summary_text(summary_text_clean)
-        article_title = article_content.title or "Articolo"
+        article_title = article_content.title or "Article"
 
         message_sections = [f"**{random_emoji} {article_title}**"]
 
@@ -274,7 +238,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if formatted_summary:
             message_sections.append(formatted_summary)
 
-        message_sections.append(f"\n_Riassunto generato con {model_name}_")
+        message_sections.append(f"\n_Summary generated with {model_name}_")
 
         message_markdown = "\n\n".join(
             section for section in message_sections if section
@@ -285,17 +249,16 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             normalize_whitespace=False,
         )
 
-        # 5. Prepara la tastiera
         keyboard_buttons = [
             InlineKeyboardButton(
-                "📄 Crea pagina Telegraph",
+                "📄 Create Telegraph Page",
                 callback_data=f"create_telegraph_page:{article_id}",
             )
         ]
         if no_hashtags_found:
             keyboard_buttons.append(
                 InlineKeyboardButton(
-                    "🔄 Riprova Hashtag", callback_data=f"retry_hashtags:{article_id}"
+                    "🔄 Retry Hashtags", callback_data=f"retry_hashtags:{article_id}"
                 )
             )
 
@@ -307,12 +270,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await animation_task
 
         try:
-            # Elimina il messaggio di processing
             await context.bot.delete_message(
                 chat_id=update.effective_chat.id,
                 message_id=processing_message.message_id,
             )
-            # Invia il riassunto come risposta al messaggio originale dell'utente
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=telegram_message,
@@ -321,10 +282,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=update.message.message_id,
             )
         except NetworkError as e:
-            print(f"Errore di rete nell'invio del riassunto finale: {e}")
+            print(f"Network error sending final summary: {e}")
 
     except NetworkError as e:
-        print(f"Errore di rete non gestito durante il processo di riassunto: {e}")
+        print(f"Unhandled network error during summary process: {e}")
         if animation_task and not stop_animation_event.is_set():
             stop_animation_event.set()
             await animation_task
@@ -334,15 +295,15 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stop_animation_event.set()
             await animation_task
 
-        print(f"Errore imprevisto durante il riassunto: {e}")
+        print(f"Unexpected error during summary: {e}")
         try:
             await context.bot.edit_message_text(
                 chat_id=update.effective_chat.id,
                 message_id=processing_message.message_id,
-                text=f"🤖 ERRORE: Impossibile completare la richiesta.\nDettagli: {e}",
+                text=f"🤖 ERROR: Could not complete the request.\nDetails: {e}",
                 parse_mode="HTML",
             )
         except NetworkError as ne:
             print(
-                f"Errore di rete nel tentativo di inviare un messaggio di errore finale: {ne}"
+                f"Network error trying to send final error message: {ne}"
             )
