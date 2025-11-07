@@ -6,6 +6,11 @@ Analizza l'articolo o la pagina web fornita e genera un riassunto chiaro che cat
 - **Perché è rilevante** o importante
 - **Quali sono i takeaway principali**
 
+# Hashtag
+All'inizio della risposta, genera da 3 a 4 hashtag che riassumano i temi principali dell'articolo.
+- **Formato**: `#hashtag1 #hashtag2 #hashtag3`
+- **Posizione**: Devono essere la prima cosa nella tua risposta, prima di qualsiasi altro testo.
+
 # Struttura del Riassunto
 
 ## 1. Apertura d'Impatto (1-2 frasi)

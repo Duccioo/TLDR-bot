@@ -14,7 +14,8 @@ from telegram.ext import ContextTypes
 from decorators import authorized
 from core.extractor import scrape_article
 from core.summarizer import summarize_article
-from utils import format_summary_text, clean_hashtags_format
+from core.history_manager import add_to_history
+from utils import format_summary_text
 from config import TITLE_EMOJIS, load_available_models
 
 
@@ -208,20 +209,52 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("Impossibile generare il riassunto.")
 
         one_paragraph_summary = one_paragraph_summary_data.get("summary")
-        context.user_data["articles"][article_id][
-            "one_paragraph_summary"
-        ] = one_paragraph_summary
 
-        formatted_summary = format_summary_text(one_paragraph_summary)
-        summary_body, hashtags_line = clean_hashtags_format(formatted_summary)
 
+        # --- NUOVA LOGICA HASHTAG E STORIA ---
+
+        # 1. Estrai hashtag dalla risposta LLM
+        llm_hashtags = []
+        summary_text_clean = one_paragraph_summary
+
+        hashtag_match = re.match(r"^(#\S+(?:\s+#\S+)*)\s*", one_paragraph_summary)
+        if hashtag_match:
+            hashtag_line = hashtag_match.group(1)
+            llm_hashtags = [tag.strip() for tag in hashtag_line.split()]
+            summary_text_clean = one_paragraph_summary[hashtag_match.end():].strip()
+
+        # 2. Controlla se l'articolo originale ha già dei tag
+        final_hashtags = []
+        if article_content.tags:
+            final_hashtags = [f"#{tag.strip().replace(' ', '_')}" for tag in article_content.tags]
+        else:
+            final_hashtags = llm_hashtags
+
+        # Store summary and hashtags for Telegraph generation
+        context.user_data["articles"][article_id]["one_paragraph_summary"] = summary_text_clean
+        context.user_data["articles"][article_id]["hashtags"] = final_hashtags
+
+        # 3. Salva nella cronologia
+        user_id = update.effective_user.id
+        add_to_history(user_id, url, summary_text_clean, final_hashtags)
+
+        # 4. Prepara il messaggio
+        no_hashtags_found = not final_hashtags
+
+        formatted_summary = format_summary_text(summary_text_clean)
         article_title = article_content.title or "Articolo"
 
         message_sections = [f"**{random_emoji} {article_title}**"]
-        if hashtags_line:
+
+        if no_hashtags_found:
+             message_sections.insert(0, ">No Hashtag")
+        else:
+            hashtags_line = " ".join(final_hashtags)
             message_sections.append(">" + hashtags_line)
-        if summary_body:
-            message_sections.append(summary_body)
+
+        if formatted_summary:
+            message_sections.append(formatted_summary)
+
         message_sections.append(f"\n_Riassunto generato con {model_name}_")
 
         message_markdown = "\n\n".join(
@@ -233,14 +266,22 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             normalize_whitespace=False,
         )
 
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "📄 Crea pagina Telegraph",
-                    callback_data=f"create_telegraph_page:{article_id}",
-                )
-            ]
+        # 5. Prepara la tastiera
+        keyboard_buttons = [
+            InlineKeyboardButton(
+                "📄 Crea pagina Telegraph",
+                callback_data=f"create_telegraph_page:{article_id}",
+            )
         ]
+        if no_hashtags_found:
+            keyboard_buttons.append(
+                InlineKeyboardButton(
+                    "🔄 Riprova Hashtag",
+                    callback_data=f"retry_hashtags:{article_id}"
+                )
+            )
+
+        keyboard = [keyboard_buttons]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if animation_task:
