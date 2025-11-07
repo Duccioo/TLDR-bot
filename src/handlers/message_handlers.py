@@ -88,16 +88,11 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Summarizes the content of a URL."""
     url = None
 
-    # Log del messaggio originale per debug
-    print(f"DEBUG: Messaggio ricevuto: '{update.message.text}'")
-    print(f"DEBUG: Entities: {update.message.entities}")
-
     if update.message.entities:
         # Prima cerca text_link (hanno priorità perché sono link espliciti)
         for entity in update.message.entities:
             if entity.type == "text_link":
                 url = entity.url
-                print(f"DEBUG: URL estratto da entity (text_link): '{url}'")
                 break
 
         # Se non c'è text_link, cerca URL semplici
@@ -107,7 +102,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     url = update.message.text[
                         entity.offset : entity.offset + entity.length
                     ]
-                    print(f"DEBUG: URL estratto da entity (url): '{url}'")
                     break
 
     if not url:
@@ -116,7 +110,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         match = re.search(url_pattern, update.message.text)
         if match:
             url = match.group(0).rstrip(".,;!)]")
-            print(f"DEBUG: URL estratto da regex: '{url}'")
 
     # Pulizia finale dell'URL
     if url:
@@ -124,7 +117,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url = url.strip()
         # Rimuovi parentesi quadre o altri caratteri alla fine
         url = re.sub(r"[\[\]]+$", "", url)
-        print(f"DEBUG: URL finale dopo pulizia: '{url}'")
 
     if not url:
         try:
@@ -210,7 +202,6 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         one_paragraph_summary = one_paragraph_summary_data.get("summary")
 
-
         # --- NUOVA LOGICA HASHTAG E STORIA ---
 
         # 1. Estrai hashtag dalla risposta LLM
@@ -221,17 +212,21 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if hashtag_match:
             hashtag_line = hashtag_match.group(1)
             llm_hashtags = [tag.strip() for tag in hashtag_line.split()]
-            summary_text_clean = one_paragraph_summary[hashtag_match.end():].strip()
+            summary_text_clean = one_paragraph_summary[hashtag_match.end() :].strip()
 
         # 2. Controlla se l'articolo originale ha già dei tag
         final_hashtags = []
         if article_content.tags:
-            final_hashtags = [f"#{tag.strip().replace(' ', '_')}" for tag in article_content.tags]
+            final_hashtags = [
+                f"#{tag.strip().replace(' ', '_')}" for tag in article_content.tags
+            ]
         else:
             final_hashtags = llm_hashtags
 
         # Store summary and hashtags for Telegraph generation
-        context.user_data["articles"][article_id]["one_paragraph_summary"] = summary_text_clean
+        context.user_data["articles"][article_id][
+            "one_paragraph_summary"
+        ] = summary_text_clean
         context.user_data["articles"][article_id]["hashtags"] = final_hashtags
 
         # 3. Salva nella cronologia
@@ -247,7 +242,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_sections = [f"**{random_emoji} {article_title}**"]
 
         if no_hashtags_found:
-             message_sections.insert(0, ">No Hashtag")
+            message_sections.insert(0, ">No Hashtag")
         else:
             hashtags_line = " ".join(final_hashtags)
             message_sections.append(">" + hashtags_line)
@@ -276,8 +271,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if no_hashtags_found:
             keyboard_buttons.append(
                 InlineKeyboardButton(
-                    "🔄 Riprova Hashtag",
-                    callback_data=f"retry_hashtags:{article_id}"
+                    "🔄 Riprova Hashtag", callback_data=f"retry_hashtags:{article_id}"
                 )
             )
 
