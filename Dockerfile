@@ -1,6 +1,9 @@
 # Usa un'immagine Python ufficiale leggera e multi-architettura
 FROM python:3.11-slim-bookworm
 
+# Imposta la variabile d'ambiente per disabilitare il buffering dell'output di Python
+ENV PYTHONUNBUFFERED=1
+
 # Imposta la directory di lavoro nel container
 WORKDIR /app
 
