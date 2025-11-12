@@ -124,45 +124,32 @@ def format_summary_text(text: str) -> str:
 
 def parse_hashtags(hashtag_string: str) -> list:
     """
-    Parse una stringa di hashtag e ritorna una lista di hashtag separati.
+    Estrae e pulisce hashtag da una stringa.
 
-    Gestisce i seguenti formati:
-    - Hashtag separati da spazi: "#tag1 #tag2 #tag3"
-    - Hashtag separati da virgole: "#tag1,tag2,tag3" o "#tag1, #tag2, #tag3"
-    - Hashtag in formato misto: "#tag1,tag2 #tag3"
+    Gestisce vari formati, inclusi hashtag separati da spazi, virgole o un mix,
+    e hashtag singoli che contengono virgole (es. #tag1,tag2,_tag3).
 
     Args:
-        hashtag_string: La stringa contenente gli hashtag da parsare
+        hashtag_string: La stringa da cui estrarre gli hashtag.
 
     Returns:
-        Lista di hashtag puliti e formattati (ciascuno con il prefisso #)
+        Una lista di hashtag puliti e formattati.
     """
     if not hashtag_string:
         return []
 
+    # Sostituisce le virgole con spazi per avere un unico delimitatore
+    normalized_string = hashtag_string.replace(",", " ")
+
+    # Divide la stringa in potenziali hashtag
+    potential_tags = normalized_string.split()
+
     hashtags = []
-
-    # Prima separa per spazi
-    parts = hashtag_string.split()
-
-    for part in parts:
-        # Per ogni parte, controlla se contiene virgole
-        if "," in part:
-            # Separa per virgola
-            sub_tags = part.split(",")
-            for tag in sub_tags:
-                tag = tag.strip()
-                if tag:
-                    # Assicura che inizi con #
-                    if not tag.startswith("#"):
-                        tag = "#" + tag
-                    hashtags.append(tag)
-        else:
-            tag = part.strip()
-            if tag:
-                # Assicura che inizi con #
-                if not tag.startswith("#"):
-                    tag = "#" + tag
-                hashtags.append(tag)
+    for tag in potential_tags:
+        # Pulisce ogni potenziale hashtag rimuovendo caratteri non validi
+        # (spazi, underscore, #) dall'inizio e dalla fine.
+        cleaned_tag = tag.strip(" _#")
+        if cleaned_tag:
+            hashtags.append(f"#{cleaned_tag}")
 
     return hashtags
