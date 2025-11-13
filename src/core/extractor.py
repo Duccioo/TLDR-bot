@@ -4,6 +4,7 @@ Fornisce funzioni per estrarre e formattare il contenuto in vari formati.
 """
 
 import asyncio
+import random
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
@@ -11,6 +12,8 @@ from typing import Any, Dict, Optional, Tuple
 import aiohttp
 import trafilatura
 from bs4 import BeautifulSoup
+
+from .http_config import HEADERS, USER_AGENTS
 
 
 @dataclass
@@ -156,20 +159,52 @@ async def scrape_article(
         - Una stringa con i dettagli dell'errore se il recupero fallisce, altrimenti None.
     """
     fallback_used = False
-    try:
-        # Define un header User-Agent più realistico per evitare blocchi
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-        }
-        async with aiohttp.ClientSession(headers=headers) as session:
-            # Aggiunto ssl=False per ignorare errori di certificato SSL
-            async with session.get(url, timeout=timeout, ssl=False) as response:
-                response.raise_for_status()
-                html_content = await response.read()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        error_details = f"Cannot reach URL '{url}'. Details: {e}"
+    max_retries = 3
+    html_content = None
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            # Costruisce gli header per la richiesta in modo dinamico a ogni tentativo
+            request_headers = HEADERS.copy()
+            request_headers["User-Agent"] = random.choice(USER_AGENTS)
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, timeout=timeout, ssl=False, headers=request_headers
+                ) as response:
+                    # Gestione specifica per l'errore 429
+                    if response.status == 429:
+                        if attempt < max_retries - 1:
+                            wait_time = random.uniform(10, 15)
+                            print(
+                                f"Attempt {attempt + 1}/{max_retries} failed: 429 Too Many Requests. "
+                                f"Retrying in {wait_time:.2f}s..."
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue  # Prossimo tentativo
+
+                    response.raise_for_status()
+                    html_content = await response.read()
+                    last_error = None  # Resetta l'errore in caso di successo
+                    break  # Esce dal ciclo se la richiesta ha successo
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            last_error = e
+            # Interrompe i tentativi in caso di altri errori di connessione/timeout
+            print(f"Attempt {attempt + 1}/{max_retries} failed with a connection error: {e}")
+            break
+
+    if last_error:
+        error_details = f"Cannot reach URL '{url}' after attempts. Details: {last_error}"
         print(f"ERROR: {error_details}")
-        return None, fallback_used, str(e)
+        return None, fallback_used, str(last_error)
+
+    if not html_content:
+        # Questo caso si verifica se tutti i tentativi falliscono con 429
+        final_error = f"Failed to retrieve content from '{url}' after {max_retries} attempts due to 429 errors."
+        print(f"ERROR: {final_error}")
+        return None, fallback_used, final_error
 
     # 1. Prova con Trafilatura (eseguito in un thread per non bloccare)
     try:
