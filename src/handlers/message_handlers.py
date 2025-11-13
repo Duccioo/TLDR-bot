@@ -121,7 +121,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     animation_task = None
 
     try:
-        article_content, fallback_used = await scrape_article(url)
+        article_content, fallback_used, error_details = await scrape_article(url)
 
         animation_task = asyncio.create_task(
             animate_loading_message(
@@ -137,11 +137,17 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if animation_task:
                 stop_animation_event.set()
                 await animation_task
+
+            error_message = (
+                f"😥 <b>Unable to extract content from the URL.</b>\n"
+                f"Here are the technical details:\n<pre>{error_details}</pre>"
+            )
+
             try:
                 await context.bot.edit_message_text(
                     chat_id=update.effective_chat.id,
                     message_id=processing_message.message_id,
-                    text="😥 Could not extract content from the URL.",
+                    text=error_message,
                     parse_mode="HTML",
                 )
             except NetworkError as e:
