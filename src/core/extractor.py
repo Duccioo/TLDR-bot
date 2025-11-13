@@ -139,7 +139,7 @@ async def scrape_article(
     timeout: int = 15,
     include_images: bool = True,
     include_links: bool = True,
-) -> Tuple[Optional[ArticleContent], bool]:
+) -> Tuple[Optional[ArticleContent], bool, Optional[str]]:
     """
     Estrae il contenuto principale da un URL, con fallback su BeautifulSoup.
 
@@ -152,19 +152,24 @@ async def scrape_article(
     Returns:
         Una tupla contenente:
         - Un oggetto ArticleContent o None.
-        - Un booleano che indica se è stato usato il fallback.
+        - Un booleano che indica se è stato usato il fallback (True se sì).
+        - Una stringa con i dettagli dell'errore se il recupero fallisce, altrimenti None.
     """
     fallback_used = False
     try:
-        async with aiohttp.ClientSession(
-            headers={"User-Agent": "Mozilla/5.0"}
-        ) as session:
-            async with session.get(url, timeout=timeout) as response:
+        # Define un header User-Agent più realistico per evitare blocchi
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+        }
+        async with aiohttp.ClientSession(headers=headers) as session:
+            # Aggiunto ssl=False per ignorare errori di certificato SSL
+            async with session.get(url, timeout=timeout, ssl=False) as response:
                 response.raise_for_status()
                 html_content = await response.read()
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        print(f"Errore: Impossibile raggiungere l'URL '{url}'. Dettagli: {e}")
-        return None, fallback_used
+        error_details = f"Cannot reach URL '{url}'. Details: {e}"
+        print(f"ERROR: {error_details}")
+        return None, fallback_used, str(e)
 
     # 1. Prova con Trafilatura (eseguito in un thread per non bloccare)
     try:
@@ -224,4 +229,4 @@ async def scrape_article(
                 "Anche il fallback con BeautifulSoup non ha estratto contenuto sufficiente."
             )
 
-    return article, fallback_used
+    return article, fallback_used, None
