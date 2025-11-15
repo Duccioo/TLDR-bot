@@ -89,7 +89,30 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         )
 
         original_message_text = query.message.text_html
-        updated_text = f'{original_message_text}\n\n📄 <a href="{telegraph_url}">Full summary:</a>'
+
+        # New Telegraph link
+        telegraph_link = f'📄 <a href="{telegraph_url}">Read on Telegra.ph</a>\n'
+
+        # Find the "Original Article" link and insert the Telegraph link before it
+        # The regex looks for the specific "📖 Original Article" link
+        pattern = re.compile(r'(<a href="[^"]+">📖\s*Original Article</a>)', re.IGNORECASE)
+
+        # Replace the found pattern with the new link followed by the original link
+        updated_text, num_replacements = pattern.subn(
+            f"{telegraph_link}\\1", original_message_text
+        )
+
+        # If the pattern wasn't found, fall back to appending before the footer
+        if num_replacements == 0:
+            footer_pattern = re.compile(r'(<i>\s*Summary generated with[^<]*</i>)', re.IGNORECASE)
+            match = footer_pattern.search(original_message_text)
+            if match:
+                footer_html = match.group(1)
+                main_content = original_message_text.split(footer_html)[0].strip()
+                updated_text = f"{main_content}\n\n{telegraph_link}\n{footer_html}"
+            else:
+                # Absolute fallback: just append the link
+                updated_text = f"{original_message_text.strip()}\n\n{telegraph_link}"
 
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,

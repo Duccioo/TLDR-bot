@@ -124,32 +124,39 @@ def format_summary_text(text: str) -> str:
 
 def parse_hashtags(hashtag_string: str) -> list:
     """
-    Estrae e pulisce hashtag da una stringa.
+    Extracts and cleans hashtags from a string.
 
-    Gestisce vari formati, inclusi hashtag separati da spazi, virgole o un mix,
-    e hashtag singoli che contengono virgole (es. #tag1,tag2,_tag3).
+    Handles various formats, including hashtags separated by spaces or commas.
+    Filters out invalid elements (e.g., containing ':').
 
     Args:
-        hashtag_string: La stringa da cui estrarre gli hashtag.
+        hashtag_string: The string from which to extract hashtags.
 
     Returns:
-        Una lista di hashtag puliti e formattati.
+        A list of clean, formatted hashtags.
     """
     if not hashtag_string:
         return []
 
-    # Sostituisce le virgole con spazi per avere un unico delimitatore
+    # Replace commas with spaces to create a single delimiter
     normalized_string = hashtag_string.replace(",", " ")
 
-    # Divide la stringa in potenziali hashtag
+    # Split the string into potential hashtags
     potential_tags = normalized_string.split()
 
-    hashtags = []
+    hashtags = set()  # Use a set to avoid duplicates
     for tag in potential_tags:
-        # Pulisce ogni potenziale hashtag rimuovendo caratteri non validi
-        # (spazi, underscore, #) dall'inizio e dalla fine.
-        cleaned_tag = tag.strip(" _#")
-        if cleaned_tag:
-            hashtags.append(f"#{cleaned_tag}")
+        # Discard invalid tags (e.g., 'pagetype:story')
+        if ":" in tag:
+            continue
 
-    return hashtags
+        # Clean the tag
+        cleaned_tag = tag.strip(" _#")
+
+        # Replace spaces and other problematic characters with underscores
+        cleaned_tag = re.sub(r'[\s\-.]+', '_', cleaned_tag)
+
+        if cleaned_tag:
+            hashtags.add(f"#{cleaned_tag}")
+
+    return sorted(list(hashtags))  # Return a sorted list
