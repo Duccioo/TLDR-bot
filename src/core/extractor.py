@@ -13,7 +13,7 @@ import aiohttp
 import trafilatura
 from bs4 import BeautifulSoup
 
-from .http_config import HEADERS, USER_AGENTS
+from .http_config import get_random_headers
 
 
 @dataclass
@@ -163,13 +163,13 @@ async def scrape_article(
     html_content = None
     last_error = None
 
-    for attempt in range(max_retries):
-        try:
-            # Costruisce gli header per la richiesta in modo dinamico a ogni tentativo
-            request_headers = HEADERS.copy()
-            request_headers["User-Agent"] = random.choice(USER_AGENTS)
+    # La sessione viene creata una sola volta per gestire i cookie tra i tentativi
+    async with aiohttp.ClientSession() as session:
+        for attempt in range(max_retries):
+            try:
+                # Ottiene un set di header dinamici e realistici per ogni tentativo
+                request_headers = get_random_headers()
 
-            async with aiohttp.ClientSession() as session:
                 async with session.get(
                     url, timeout=timeout, ssl=False, headers=request_headers
                 ) as response:
@@ -189,11 +189,13 @@ async def scrape_article(
                     last_error = None  # Resetta l'errore in caso di successo
                     break  # Esce dal ciclo se la richiesta ha successo
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            last_error = e
-            # Interrompe i tentativi in caso di altri errori di connessione/timeout
-            print(f"Attempt {attempt + 1}/{max_retries} failed with a connection error: {e}")
-            break
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last_error = e
+                # Interrompe i tentativi in caso di altri errori di connessione/timeout
+                print(
+                    f"Attempt {attempt + 1}/{max_retries} failed with a connection error: {e}"
+                )
+                break  # Non ha senso ritentare su errori di connessione
 
     if last_error:
         error_details = f"Cannot reach URL '{url}' after attempts. Details: {last_error}"
