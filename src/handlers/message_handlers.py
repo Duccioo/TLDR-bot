@@ -215,9 +215,9 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         final_hashtags = []
         if article_content.tags:
-            final_hashtags = [
-                f"#{tag.strip().replace(' ', '_')}" for tag in article_content.tags
-            ]
+            # Join tags into a single string and parse them
+            tags_string = ",".join(article_content.tags)
+            final_hashtags = parse_hashtags(tags_string)
         else:
             final_hashtags = llm_hashtags
 
@@ -244,7 +244,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if formatted_summary:
             message_sections.append(formatted_summary)
 
-        message_sections.append(f"\n_Summary generated with {model_name}_")
+        # Add the original article link
+        message_sections.append(f"[📖 Original Article]({url})")
+
+        message_sections.append(f"_Summary generated with {model_name}_")
 
         message_markdown = "\n\n".join(
             section for section in message_sections if section
