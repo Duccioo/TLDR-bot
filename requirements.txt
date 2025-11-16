@@ -8,3 +8,4 @@ python-telegram-bot
 packaging
 markdown-it-py
 telegramify-markdown
+Brotli
