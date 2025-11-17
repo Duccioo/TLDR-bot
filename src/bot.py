@@ -39,7 +39,11 @@ from handlers.conversation_handlers import (
     cancel,
 )
 from handlers.message_handlers import summarize_url
-from handlers.callback_handlers import generate_telegraph_page, retry_hashtags
+from handlers.callback_handlers import (
+    generate_telegraph_page,
+    retry_hashtags,
+    retry_summary,
+)
 
 
 def signal_handler(sig, frame):
@@ -124,6 +128,8 @@ def setup_handlers(application: Application):
     application.add_handler(
         CallbackQueryHandler(retry_hashtags, pattern="^retry_hashtags:")
     )
+    # Add callback handler for retrying the whole summary
+    application.add_handler(CallbackQueryHandler(retry_summary, pattern="^retry:"))
 
     # Add handler for URL messages (MUST be last to avoid catching everything)
     application.add_handler(

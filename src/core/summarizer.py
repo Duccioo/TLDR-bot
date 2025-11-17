@@ -57,15 +57,14 @@ def _call_llm_api(
     user_prompt: str,
     model_name: str = "gemini-1.5-flash",
     tools: Optional[List[types.Tool]] = None,
-    max_retries: int = 3,
-    retry_delay: int = 15,
+    max_retries: int = 4,  # 1 tentativo iniziale + 3 retry
     temperature: float = 0.6,
     top_p: float = 0.95,
     top_k: int = 40,
 ) -> Dict[str, Any]:
     """
     Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
-    Include un meccanismo di retry per errori 503.
+    Include un meccanismo di retry progressivo per errori 503.
 
     Args:
         system_instruction: Le istruzioni di sistema per il modello.
@@ -73,7 +72,6 @@ def _call_llm_api(
         model_name: Il nome del modello Gemini da utilizzare.
         tools: Una lista di tool da passare al modello.
         max_retries: Numero massimo di tentativi.
-        retry_delay: Secondi da attendere tra i tentativi.
         temperature: Parametro di temperatura per la generazione, che controlla la casualità.
         top_p: Parametro top_p per la generazione, ovvero la soglia di probabilità cumulativa.
         top_k: Parametro top_k per la generazione, ovvero il numero di token più probabili da considerare.
@@ -88,6 +86,9 @@ def _call_llm_api(
             "summary": "**ERRORE:** La variabile d'ambiente `GEMINI_API_KEY` non è stata impostata.",
             "token_count": 0,
         }
+
+    # Definisci i ritardi progressivi per i tentativi (in secondi)
+    retry_delays = [15, 30, 60]
 
     for attempt in range(max_retries):
         try:
@@ -163,19 +164,23 @@ def _call_llm_api(
         except Exception as e:
             # Controlla se l'errore è un 503 Service Unavailable
             if "503" in str(e) and "UNAVAILABLE" in str(e):
-                print(
-                    f"--- ERRORE 503 (Model Overloaded) al tentativo {attempt + 1}. Attendo {retry_delay} secondi... ---"
-                )
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
+                # Se non siamo all'ultimo tentativo, attendi e riprova
+                if attempt < len(retry_delays):
+                    delay = retry_delays[attempt]
+                    print(
+                        f"--- ERRORE 503 (Model Overloaded) al tentativo {attempt + 1}. Attendo {delay} secondi... ---"
+                    )
+                    time.sleep(delay)
                     continue  # Riprova
                 else:
+                    # Tutti i tentativi (inclusi i retry) sono falliti
                     print(
-                        "--- Numero massimo di tentativi raggiunto. ERRORE DEFINITIVO. ---"
+                        f"--- ERRORE 503 (Model Overloaded) al tentativo finale {attempt + 1}. Nessun altro tentativo. ---"
                     )
                     return {
                         "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
                         "token_count": 0,
+                        "needs_retry": True,  # Aggiungo un flag per il gestore
                     }
             else:
                 # Se l'errore non è un 503, esci subito

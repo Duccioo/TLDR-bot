@@ -2,8 +2,19 @@
 Keyboard layouts for the Telegram bot.
 """
 
-from telegram import ReplyKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from config import load_available_models, load_available_prompts
+
+
+def get_retry_keyboard(
+    url: str, summary_type: str, use_web_search: bool, use_url_context: bool
+):
+    """Returns the retry keyboard layout."""
+    callback_data = (
+        f"retry:{summary_type}:{url}:{use_web_search}:{use_url_context}"
+    )
+    keyboard = [[InlineKeyboardButton("🔄 Retry", callback_data=callback_data)]]
+    return InlineKeyboardMarkup(keyboard)
 
 
 def get_main_keyboard():

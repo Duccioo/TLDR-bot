@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 from core.summarizer import summarize_article
 from core.scraper import crea_articolo_telegraph_with_content
 from core.history_manager import load_history, save_history
+from keyboards import get_retry_keyboard
 from utils import parse_hashtags
 from config import load_available_models
 from handlers.message_handlers import animate_loading_message
@@ -72,7 +73,31 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
         if not technical_summary_data:
             raise ValueError("Could not generate the full summary.")
 
+        # Check for retry flag first
+        if technical_summary_data.get("needs_retry"):
+            error_message = technical_summary_data.get("summary")
+            retry_keyboard = get_retry_keyboard(
+                article_content.url,
+                technical_summary_prompt,
+                use_web_search,
+                use_url_context,
+            )
+            await context.bot.edit_message_text(
+                chat_id=query.message.chat_id,
+                message_id=processing_message.message_id,
+                text=error_message,
+                parse_mode="HTML",
+                reply_markup=retry_keyboard,
+            )
+            # Stop the animation, but don't delete the message
+            stop_animation_event.set()
+            await animation_task
+            return
+
         technical_summary = technical_summary_data.get("summary")
+        if "ERRORE:" in technical_summary:
+            raise ValueError(technical_summary)
+
         image_urls = technical_summary_data.get("images")
 
         telegraph_content = technical_summary
@@ -147,25 +172,82 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             del context.user_data["articles"][article_id]
 
 
+from handlers.message_handlers import process_url
+
+
+async def retry_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Retries the summarization process for a given URL."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        _, summary_type, url, use_web_search_str, use_url_context_str = query.data.split(":", 4)
+        use_web_search = use_web_search_str.lower() == 'true'
+        use_url_context = use_url_context_str.lower() == 'true'
+
+        # HACK: To keep the flow consistent, we're reusing the process_url function.
+        # We need to simulate a "message" object that process_url can use.
+        class MockMessage:
+            def __init__(self, text, chat_id):
+                self.text = text
+                self.chat_id = chat_id
+                self.message_id = query.message.message_id
+
+            async def reply_text(self, *args, **kwargs):
+                # Edit the existing message instead of sending a new one
+                return await context.bot.edit_message_text(
+                    chat_id=self.chat_id,
+                    message_id=self.message_id,
+                    *args,
+                    **kwargs
+                )
+
+        mock_message = MockMessage(url, query.message.chat_id)
+
+        # We also need to remove the "Retry" button from the message we're about to edit.
+        await query.edit_message_reply_markup(reply_markup=None)
+
+        # Now, call the main processing function as if a new message with the URL was sent
+        await process_url(
+            update.effective_chat.id,
+            url,
+            context,
+            mock_message,
+            use_web_search,
+            use_url_context,
+            summary_type, # Pass the original summary type to be retried
+        )
+
+    except (ValueError, IndexError) as e:
+        print(f"Error in retry_summary callback: {e}", flush=True)
+        await query.message.reply_text("🤖 ERROR: Invalid retry data. Please try sending the URL again.")
+
+
 async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Retries generating hashtags for an article."""
     query = update.callback_query
     await query.answer()
 
+    processing_message = await query.message.reply_text(
+        "⏳ Generating hashtags...", parse_mode="HTML"
+    )
+
     try:
         article_id = query.data.split(":")[1]
     except (IndexError, AttributeError):
-        await query.message.reply_text("🤖 ERROR: Invalid article ID.")
+        await processing_message.edit_text("🤖 ERROR: Invalid article ID.")
         return
 
     article_data = context.user_data.get("articles", {}).get(article_id)
     if not article_data or "article_content" not in article_data:
-        await query.edit_message_text(
+        await processing_message.edit_text(
             "🤖 ERROR: Article data expired or not found. Please try sending the URL again."
         )
         return
 
     article_content = article_data["article_content"]
+    use_web_search = context.user_data.get("web_search", False)
+    use_url_context = context.user_data.get("url_context", False)
 
     default_model = (
         load_available_models()[0] if load_available_models() else "gemini-1.5-flash"
@@ -176,13 +258,33 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
         article_content,
         "retry_hashtags_prompt",
         model_name=model_name,
+        use_web_search=use_web_search,
+        use_url_context=use_url_context,
     )
 
-    new_hashtags_str = hashtag_data.get("summary") if hashtag_data else ""
+    if not hashtag_data:
+        await processing_message.edit_text("🤖 ERROR: Could not generate hashtags.")
+        return
 
+    if hashtag_data.get("needs_retry"):
+        error_message = hashtag_data.get("summary")
+        retry_keyboard = get_retry_keyboard(
+            article_content.url,
+            "retry_hashtags_prompt",
+            use_web_search,
+            use_url_context,
+        )
+        await processing_message.edit_text(
+            error_message, parse_mode="HTML", reply_markup=retry_keyboard
+        )
+        return
+
+    # On success, delete the processing message
+    await processing_message.delete()
+
+    new_hashtags_str = hashtag_data.get("summary")
     if new_hashtags_str and new_hashtags_str.startswith("#"):
         new_hashtags = parse_hashtags(new_hashtags_str)
-
         user_id = update.effective_user.id
         history = load_history(user_id)
         for entry in history:
@@ -206,7 +308,6 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
         await query.edit_message_text(
             text=updated_text, reply_markup=reply_markup, parse_mode="MarkdownV2"
         )
