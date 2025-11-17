@@ -35,8 +35,18 @@ async def animate_loading_message(
         base_text = "Standard extraction failed, using alternative method"
     else:
         emojis = [
-            "🕐", "🕑", "🕒", "🕓", "🕔", "🕕",
-            "🕖", "🕗", "🕘", "🕙", "🕚", "🕛",
+            "🕐",
+            "🕑",
+            "🕒",
+            "🕓",
+            "🕔",
+            "🕕",
+            "🕖",
+            "🕗",
+            "🕘",
+            "🕙",
+            "🕚",
+            "🕛",
         ]
 
     emoji_index = 0
@@ -259,17 +269,64 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     url_pattern = r"https?://[^\s<>\"'\[\]]+"
     text = ""
-    if update.message and update.message.text:
-        text = update.message.text
-    elif update.edited_message and update.edited_message.text:
-        text = update.edited_message.text
+    url = None
 
-    match = re.search(url_pattern, text)
-    if not match:
-        await update.message.reply_text("🔗 Please send a valid URL.", parse_mode="HTML")
+    # Get message object
+    message = update.message or update.edited_message
+
+    # Debug logging
+    print(
+        f"DEBUG - Message received: {message.text if message else 'No message'}",
+        flush=True,
+    )
+    if message and message.entities:
+        print(
+            f"DEBUG - Entities found: {[(e.type, getattr(e, 'url', None)) for e in message.entities]}",
+            flush=True,
+        )
+
+    if message and message.text:
+        text = message.text
+
+        # First, check for embedded URLs in entities (e.g., [text](url))
+        if message.entities:
+            # First pass: look for text_link (embedded links with URL attribute)
+            for entity in message.entities:
+                print(
+                    f"DEBUG - Checking entity: type={entity.type}, has_url={hasattr(entity, 'url')}",
+                    flush=True,
+                )
+                if entity.type == "text_link" and hasattr(entity, "url") and entity.url:
+                    url = entity.url
+                    print(f"DEBUG - Found text_link URL: {url}", flush=True)
+                    break
+
+            # Second pass: if no text_link found, check for URL type entities
+            if not url:
+                for entity in message.entities:
+                    if entity.type == "url":
+                        # Extract URL from text using entity offset and length
+                        extracted_url = text[
+                            entity.offset : entity.offset + entity.length
+                        ]
+                        print(f"DEBUG - Found URL entity: {extracted_url}", flush=True)
+                        # Validate it looks like a URL
+                        if re.match(url_pattern, extracted_url):
+                            url = extracted_url.rstrip(".,;!)]")
+                            break
+
+        # If no entity URL found, try to extract from text
+        if not url:
+            match = re.search(url_pattern, text)
+            if match:
+                url = match.group(0).rstrip(".,;!)]")
+                print(f"DEBUG - Found URL in text: {url}", flush=True)
+
+    if not url:
+        await update.message.reply_text(
+            "🔗 Please send a valid URL.", parse_mode="HTML"
+        )
         return
-
-    url = match.group(0).rstrip(".,;!)]")
 
     # Get user settings
     use_web_search = context.user_data.get("web_search", False)
