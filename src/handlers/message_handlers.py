@@ -9,7 +9,7 @@ import hashlib
 
 import telegramify_markdown
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import NetworkError
+from telegram.error import NetworkError, TelegramError
 from telegram.ext import ContextTypes
 from decorators import authorized
 from core.extractor import scrape_article
@@ -77,7 +77,7 @@ async def animate_loading_message(
             if "Message is not modified" not in str(e):
                 print(f"Error during animation: {e}")
 
-        await asyncio.sleep(0.8 if fallback_mode else 0.5)
+        await asyncio.sleep(1.5)
 
 
 async def process_url(
@@ -254,90 +254,106 @@ async def process_url(
             stop_animation_event.set()
             await animation_task
         print(f"Unexpected error during URL processing: {e}", flush=True)
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=processing_message.message_id,
-            text=f"🤖 ERROR: Could not complete the request.\nDetails: {e}",
-            parse_mode="HTML",
-        )
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=processing_message.message_id,
+                text=f"🤖 ERROR: Could not complete the request.\nDetails: {e}",
+                parse_mode="HTML",
+            )
+        except TelegramError as te:
+            print(
+                f"Failed to send error message due to Telegram API error: {te}",
+                flush=True,
+            )
+
+
+# Create a queue for processing URLs sequentially
+url_queue = asyncio.Queue()
+
+
+async def url_processor_worker():
+    """
+    Worker that processes URLs from the queue one by one.
+    """
+    print("URL processor worker started.", flush=True)
+    while True:
+        try:
+            # Get a URL processing task from the queue
+            task_data = await url_queue.get()
+            (
+                chat_id,
+                url,
+                context,
+                message,
+                use_web_search,
+                use_url_context,
+                summary_type,
+            ) = task_data
+
+            print(f"Processing URL from queue: {url}", flush=True)
+            await process_url(
+                chat_id=chat_id,
+                url=url,
+                context=context,
+                message=message,
+                use_web_search=use_web_search,
+                use_url_context=use_url_context,
+                summary_type=summary_type,
+            )
+        except Exception as e:
+            print(f"Error in URL processor worker: {e}", flush=True)
+        finally:
+            # Notify the queue that the task is done
+            url_queue.task_done()
 
 
 @authorized
 async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handles incoming messages with URLs and initiates the summarization process.
+    Handles incoming messages with URLs and adds them to the processing queue.
     """
     url_pattern = r"https?://[^\s<>\"'\[\]]+"
     text = ""
     url = None
 
-    # Get message object
     message = update.message or update.edited_message
-
-    # Debug logging
-    print(
-        f"DEBUG - Message received: {message.text if message else 'No message'}",
-        flush=True,
-    )
-    if message and message.entities:
-        print(
-            f"DEBUG - Entities found: {[(e.type, getattr(e, 'url', None)) for e in message.entities]}",
-            flush=True,
-        )
-
-    if message and message.text:
-        text = message.text
-
-        # First, check for embedded URLs in entities (e.g., [text](url))
-        if message.entities:
-            # First pass: look for text_link (embedded links with URL attribute)
-            for entity in message.entities:
-                print(
-                    f"DEBUG - Checking entity: type={entity.type}, has_url={hasattr(entity, 'url')}",
-                    flush=True,
-                )
-                if entity.type == "text_link" and hasattr(entity, "url") and entity.url:
-                    url = entity.url
-                    print(f"DEBUG - Found text_link URL: {url}", flush=True)
-                    break
-
-            # Second pass: if no text_link found, check for URL type entities
-            if not url:
-                for entity in message.entities:
-                    if entity.type == "url":
-                        # Extract URL from text using entity offset and length
-                        extracted_url = text[
-                            entity.offset : entity.offset + entity.length
-                        ]
-                        print(f"DEBUG - Found URL entity: {extracted_url}", flush=True)
-                        # Validate it looks like a URL
-                        if re.match(url_pattern, extracted_url):
-                            url = extracted_url.rstrip(".,;!)]")
-                            break
-
-        # If no entity URL found, try to extract from text
-        if not url:
-            match = re.search(url_pattern, text)
-            if match:
-                url = match.group(0).rstrip(".,;!)]")
-                print(f"DEBUG - Found URL in text: {url}", flush=True)
-
-    if not url:
-        await update.message.reply_text(
-            "🔗 Please send a valid URL.", parse_mode="HTML"
-        )
+    if not message or not message.text:
         return
 
-    # Get user settings
+    text = message.text
+    if message.entities:
+        for entity in message.entities:
+            if entity.type == "text_link" and hasattr(entity, "url") and entity.url:
+                url = entity.url
+                break
+        if not url:
+            for entity in message.entities:
+                if entity.type == "url":
+                    extracted_url = text[entity.offset : entity.offset + entity.length]
+                    if re.match(url_pattern, extracted_url):
+                        url = extracted_url.rstrip(".,;!)]")
+                        break
+    if not url:
+        match = re.search(url_pattern, text)
+        if match:
+            url = match.group(0).rstrip(".,;!)]")
+
+    if not url:
+        await message.reply_text("🔗 Please send a valid URL.", parse_mode="HTML")
+        return
+
     use_web_search = context.user_data.get("web_search", False)
     use_url_context = context.user_data.get("url_context", False)
 
-    await process_url(
-        chat_id=update.effective_chat.id,
-        url=url,
-        context=context,
-        message=update.message,
-        use_web_search=use_web_search,
-        use_url_context=use_url_context,
-        summary_type="one_paragraph_summary_V2",
+    task_data = (
+        update.effective_chat.id,
+        url,
+        context,
+        message,
+        use_web_search,
+        use_url_context,
+        "one_paragraph_summary_V2",
     )
+    await url_queue.put(task_data)
+    print(f"URL added to queue: {url}. Queue size: {url_queue.qsize()}", flush=True)

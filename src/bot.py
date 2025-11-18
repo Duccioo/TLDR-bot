@@ -38,7 +38,8 @@ from handlers.conversation_handlers import (
     telegraph_summary_model_chosen,
     cancel,
 )
-from handlers.message_handlers import summarize_url
+import asyncio
+from handlers.message_handlers import summarize_url, url_processor_worker
 from handlers.callback_handlers import (
     generate_telegraph_page,
     retry_hashtags,
@@ -153,6 +154,10 @@ def main():
 
     print("Adding handlers...")
     setup_handlers(application)
+
+    # Create and run the URL processor worker
+    print("Starting URL processor worker...")
+    asyncio.create_task(url_processor_worker())
 
     # Run the bot until the user presses Ctrl-C
     print("Bot is starting...")
