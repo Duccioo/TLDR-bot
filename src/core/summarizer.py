@@ -268,3 +268,71 @@ async def summarize_article(
         "summary": summary_text,
         "images": article.images,
     }
+
+
+async def answer_question(
+    article: ArticleContent,
+    question: str,
+    summary: str,
+    model_name: str = "gemini-1.5-flash",
+    prompts_dir: str = os.path.join("src", "prompts"),
+) -> Optional[Dict[str, Any]]:
+    """
+    Asynchronously answers a user's question based on the article content.
+    """
+    prompt_path = os.path.join(prompts_dir, "qna.md")
+    if not os.path.exists(prompt_path):
+        print(f"Error: Prompt file not found: {prompt_path}")
+        return None
+
+    try:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            template = f.read()
+    except IOError as e:
+        print(f"Error reading prompt file: {e}")
+        return None
+
+    template = template.replace("{{summary_language}}", SUMMARY_LANGUAGE)
+
+    # Split template into system instruction and user prompt
+    if "---" in template:
+        parts = template.split("---", 1)
+        system_instruction = parts[0].strip()
+        user_template = parts[1].strip()
+    else:
+        # Fallback if the separator is missing
+        system_instruction = "You are a helpful assistant."
+        user_template = template
+
+    # Populate the user prompt template
+    user_prompt = user_template.replace("{{title}}", article.title or "N/A")
+    user_prompt = user_prompt.replace("{{url}}", article.url or "N/A")
+    user_prompt = user_prompt.replace("{{summary}}", summary or "N/A")
+    user_prompt = user_prompt.replace("{{text}}", article.text or "N/A")
+    user_prompt = user_prompt.replace("{{question}}", question)
+
+    # For Q&A, let's not enable web search by default to keep it focused.
+    tools = []
+
+    # Run blocking operations in a separate thread
+    await asyncio.to_thread(wait_for_rate_limit, model_name)
+
+    llm_response = await asyncio.to_thread(
+        _call_llm_api,
+        system_instruction=system_instruction,
+        user_prompt=user_prompt,
+        model_name=model_name,
+        tools=tools or None,
+    )
+
+    answer_text = llm_response.get("summary", "") # Reusing 'summary' key from the dict
+    token_count = llm_response.get("token_count", 0)
+
+    if "ERRORE:" not in answer_text:
+        await asyncio.to_thread(update_model_usage, model_name, token_count)
+
+    # The function in the handler expects a dictionary with a "summary" key.
+    # Let's keep the return structure consistent.
+    return {
+        "summary": answer_text
+    }

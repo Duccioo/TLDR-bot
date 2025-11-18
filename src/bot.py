@@ -39,7 +39,7 @@ from handlers.conversation_handlers import (
     cancel,
 )
 import asyncio
-from handlers.message_handlers import summarize_url, url_processor_worker
+from handlers.message_handlers import summarize_url, url_processor_worker, handle_qna_reply
 from handlers.callback_handlers import (
     generate_telegraph_page,
     retry_hashtags,
@@ -131,6 +131,11 @@ def setup_handlers(application: Application):
     )
     # Add callback handler for retrying the whole summary
     application.add_handler(CallbackQueryHandler(retry_summary, pattern="^retry:"))
+
+    # Add the Q&A reply handler. This specifically looks for replies.
+    application.add_handler(
+        MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND, handle_qna_reply)
+    )
 
     # Add handler for URL messages (MUST be last to avoid catching everything)
     application.add_handler(
