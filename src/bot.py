@@ -138,6 +138,15 @@ def setup_handlers(application: Application):
     )
 
 
+async def post_init_hook(application: Application):
+    """
+    This function will be called after the Application is initialized.
+    It's the perfect place to start background tasks.
+    """
+    print("Starting URL processor worker...", flush=True)
+    asyncio.create_task(url_processor_worker())
+
+
 def main():
     """Main function to run the bot."""
     # Setup signal handler for Ctrl+C
@@ -150,14 +159,12 @@ def main():
     get_quota_data()  # This will create the file if it doesn't exist
 
     print(f"Initializing bot with token: {TELEGRAM_BOT_TOKEN[:10]}...")
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = (
+        Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init_hook).build()
+    )
 
     print("Adding handlers...")
     setup_handlers(application)
-
-    # Create and run the URL processor worker
-    print("Starting URL processor worker...")
-    asyncio.create_task(url_processor_worker())
 
     # Run the bot until the user presses Ctrl-C
     print("Bot is starting...")
