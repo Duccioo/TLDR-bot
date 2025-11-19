@@ -18,13 +18,13 @@ def initialize_quota_file():
     Inizializza il file quota.json con i dati dei modelli text-out del free tier di Google Gemini.
     Dati presi da: https://ai.google.dev/gemini-api/docs/rate-limits#free-tier
     """
-    # Dati aggiornati al 27 ottobre 2025 per il free tier (text-out models)
+    # Dati aggiornati al 19 ottobre 2025 per il free tier (text-out models)
     default_quota_data = {
         "gemini": {
             "gemini-2.5-pro": {
-                "requests_per_minute": 5,
+                "requests_per_minute": 2,
                 "tokens_per_minute": 125000,
-                "requests_per_day": 100,
+                "requests_per_day": 50,
                 "usage_timestamps": [],
             },
             "gemini-2.5-flash": {
@@ -65,7 +65,6 @@ def initialize_quota_file():
             },
         }
     }
-
     # Crea la directory se non esiste
     os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
 
