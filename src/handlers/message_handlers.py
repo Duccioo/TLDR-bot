@@ -13,7 +13,7 @@ from telegram.error import NetworkError, TelegramError
 from telegram.ext import ContextTypes
 from decorators import authorized
 from core.extractor import scrape_article
-from core.summarizer import summarize_article
+from core.summarizer import summarize_article, answer_question
 from core.history_manager import add_to_history
 from keyboards import get_retry_keyboard
 from utils import format_summary_text, parse_hashtags
@@ -357,3 +357,114 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await url_queue.put(task_data)
     print(f"URL added to queue: {url}. Queue size: {url_queue.qsize()}", flush=True)
+
+
+@authorized
+async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles a user's question when they reply to a summary message.
+    """
+    message = update.message
+    if not message.reply_to_message or not message.text:
+        return
+
+    # Check if the replied-to message is from our bot and contains a summary
+    replied_message = message.reply_to_message
+    if (
+        not replied_message.from_user.is_bot
+        or not replied_message.text
+        or "Original Article" not in replied_message.text
+    ):
+        return
+
+    # Extract URL from the replied message's markdown
+    url_match = re.search(r"\[📖 Original Article\]\((https?://[^\s]+)\)", replied_message.text)
+    if not url_match:
+        # Fallback for plain text links if markdown parsing failed or link is not in expected format
+        url_match = re.search(r"https?://[^\s<>\"'\[\]]+", replied_message.text)
+        if not url_match:
+            return # Ignore if no URL is found
+
+    url = url_match.group(1) if len(url_match.groups()) > 0 else url_match.group(0)
+    user_question = message.text
+    chat_id = update.effective_chat.id
+
+    # Show a loading message
+    processing_message = await message.reply_text(
+        "🤔 Thinking...",
+        parse_mode="HTML",
+        disable_notification=True,
+    )
+    stop_animation_event = asyncio.Event()
+    animation_task = asyncio.create_task(
+            animate_loading_message(
+                context,
+                chat_id,
+                processing_message.message_id,
+                stop_animation_event,
+                fallback_mode=False,
+            )
+        )
+
+    try:
+        # 1. Re-scrape the article
+        article_content, _, error_details = await scrape_article(url)
+        if not article_content:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=processing_message.message_id,
+                text=f"😥 <b>Could not re-fetch article content.</b>\n<pre>{error_details}</pre>",
+                parse_mode="HTML",
+            )
+            return
+
+        # 2. Extract the previous summary text from the message
+        # We'll just take the text before the "Original Article" link
+        summary_text = replied_message.text.split("📖 Original Article")[0].strip()
+
+        # 3. Call the new answer_question function
+        default_model = (
+            load_available_models()[0]
+            if load_available_models()
+            else "gemini-1.5-flash"
+        )
+        model_name = context.user_data.get("short_summary_model", default_model)
+
+        answer_data = await answer_question(
+            article=article_content,
+            question=user_question,
+            summary=summary_text,
+            model_name=model_name,
+        )
+
+        stop_animation_event.set()
+        await animation_task
+
+        if not answer_data or "ERRORE:" in answer_data.get("summary", ""):
+            error_message = answer_data.get("summary", "An unknown error occurred.")
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=processing_message.message_id,
+                text=error_message,
+                parse_mode="HTML",
+            )
+            return
+
+        # 4. Send the answer
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=processing_message.message_id,
+            text=answer_data["summary"],
+            parse_mode="HTML",
+        )
+
+    except Exception as e:
+        stop_animation_event.set()
+        await animation_task
+        print(f"Error in handle_qna_reply: {e}", flush=True)
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=processing_message.message_id,
+            text=f"🤖 **ERROR:** Could not process the question.\nDetails: `{e}`",
+            parse_mode="MarkdownV2",
+        )
