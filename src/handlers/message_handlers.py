@@ -377,15 +377,49 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ):
         return
 
-    # Extract URL from the replied message's markdown
-    url_match = re.search(r"\[📖 Original Article\]\((https?://[^\s]+)\)", replied_message.text)
-    if not url_match:
-        # Fallback for plain text links if markdown parsing failed or link is not in expected format
-        url_match = re.search(r"https?://[^\s<>\"'\[\]]+", replied_message.text)
-        if not url_match:
-            return # Ignore if no URL is found
+    # Extract URL from the replied message
+    url = None
+    if replied_message.entities:
+        for entity in replied_message.entities:
+            if entity.type == "text_link" and entity.url:
+                # Check if this link corresponds to "Original Article"
+                entity_text = replied_message.text[
+                    entity.offset : entity.offset + entity.length
+                ]
+                if "Original Article" in entity_text:
+                    url = entity.url
+                    break
+            elif entity.type == "url":
+                # Plain URL
+                url = replied_message.text[
+                    entity.offset : entity.offset + entity.length
+                ]
+                # We prefer the "Original Article" link, but if we find a plain URL first/only, we might use it.
+                # However, let's keep looking for the specific link if possible.
+                # Actually, if we find a plain URL, it might be in the summary text.
+                # But usually the Original Article link is a text_link.
+                pass
 
-    url = url_match.group(1) if len(url_match.groups()) > 0 else url_match.group(0)
+    # If we didn't find the specific "Original Article" text_link, try to find ANY url
+    if not url and replied_message.entities:
+        for entity in replied_message.entities:
+            if entity.type == "text_link" and entity.url:
+                url = entity.url
+                break
+            elif entity.type == "url":
+                url = replied_message.text[
+                    entity.offset : entity.offset + entity.length
+                ]
+                break
+
+    if not url:
+        # Fallback: try regex on text just in case
+        url_match = re.search(r"https?://[^\s<>\"'\[\]]+", replied_message.text)
+        if url_match:
+            url = url_match.group(0)
+
+    if not url:
+        return
     user_question = message.text
     chat_id = update.effective_chat.id
 
@@ -397,14 +431,14 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     stop_animation_event = asyncio.Event()
     animation_task = asyncio.create_task(
-            animate_loading_message(
-                context,
-                chat_id,
-                processing_message.message_id,
-                stop_animation_event,
-                fallback_mode=False,
-            )
+        animate_loading_message(
+            context,
+            chat_id,
+            processing_message.message_id,
+            stop_animation_event,
+            fallback_mode=False,
         )
+    )
 
     try:
         # 1. Re-scrape the article
@@ -451,11 +485,14 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # 4. Send the answer
+        formatted_answer = telegramify_markdown.markdownify(
+            answer_data["summary"], normalize_whitespace=False
+        )
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=processing_message.message_id,
-            text=answer_data["summary"],
-            parse_mode="HTML",
+            text=formatted_answer,
+            parse_mode="MarkdownV2",
         )
 
     except Exception as e:
