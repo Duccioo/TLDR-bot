@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 import aiohttp
 import trafilatura
 from bs4 import BeautifulSoup
+from curl_cffi.requests import AsyncSession
 
 from .http_config import get_random_headers
 
@@ -137,6 +138,26 @@ async def _scrape_with_beautifulsoup(html_content: str) -> Optional[Dict[str, An
         return None
 
 
+async def _fetch_with_curl_cffi(url: str, timeout: int = 15) -> Tuple[Optional[bytes], Optional[str]]:
+    """
+    Tenta di scaricare l'URL usando curl_cffi per bypassare controlli TLS/Bot.
+    """
+    print(f"Tentativo di fallback con curl_cffi per {url}...")
+    try:
+        # Usa 'chrome' come impersonazione sicura e moderna
+        async with AsyncSession(impersonate="chrome") as session:
+            response = await session.get(url, timeout=timeout)
+
+            if response.status_code == 200:
+                return response.content, None
+            elif response.status_code in [403, 429]:
+                return None, f"curl_cffi blocked with status {response.status_code}"
+            else:
+                return None, f"curl_cffi failed with status {response.status_code}"
+    except Exception as e:
+        return None, f"curl_cffi exception: {e}"
+
+
 async def scrape_article(
     url: str,
     timeout: int = 15,
@@ -144,71 +165,64 @@ async def scrape_article(
     include_links: bool = True,
 ) -> Tuple[Optional[ArticleContent], bool, Optional[str]]:
     """
-    Estrae il contenuto principale da un URL, con fallback su BeautifulSoup.
-
-    Args:
-        url: L'URL dell'articolo.
-        timeout: Timeout per la richiesta HTTP.
-        include_images: Se includere le immagini.
-        include_links: Se includere i link.
-
-    Returns:
-        Una tupla contenente:
-        - Un oggetto ArticleContent o None.
-        - Un booleano che indica se è stato usato il fallback (True se sì).
-        - Una stringa con i dettagli dell'errore se il recupero fallisce, altrimenti None.
+    Estrae il contenuto principale da un URL, con fallback su BeautifulSoup e curl_cffi.
     """
     fallback_used = False
     max_retries = 3
     html_content = None
     last_error = None
 
-    # La sessione viene creata una sola volta per gestire i cookie tra i tentativi
+    # 1. Tentativo principale con aiohttp
     async with aiohttp.ClientSession() as session:
         for attempt in range(max_retries):
             try:
-                # Ottiene un set di header dinamici e realistici per ogni tentativo
                 request_headers = get_random_headers()
-
                 async with session.get(
                     url, timeout=timeout, ssl=False, headers=request_headers
                 ) as response:
-                    # Gestione specifica per l'errore 429
                     if response.status == 429:
                         if attempt < max_retries - 1:
-                            wait_time = random.uniform(10, 15)
-                            print(
-                                f"Attempt {attempt + 1}/{max_retries} failed: 429 Too Many Requests. "
-                                f"Retrying in {wait_time:.2f}s..."
-                            )
+                            wait_time = random.uniform(5, 10)
+                            print(f"Attempt {attempt + 1}/{max_retries} failed (429). Retrying in {wait_time:.1f}s...")
                             await asyncio.sleep(wait_time)
-                            continue  # Prossimo tentativo
+                            continue
+
+                    # Se otteniamo 403 o 429 persistente, interrompiamo per passare a curl_cffi
+                    if response.status in [403, 429]:
+                        last_error = f"HTTP {response.status}"
+                        print(f"aiohttp bloccato con status {response.status}. Passaggio al fallback.")
+                        break
 
                     response.raise_for_status()
                     html_content = await response.read()
-                    last_error = None  # Resetta l'errore in caso di successo
-                    break  # Esce dal ciclo se la richiesta ha successo
+                    last_error = None
+                    break
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 last_error = e
-                # Interrompe i tentativi in caso di altri errori di connessione/timeout
-                print(
-                    f"Attempt {attempt + 1}/{max_retries} failed with a connection error: {e}"
-                )
-                break  # Non ha senso ritentare su errori di connessione
+                print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
+                # Non ritentiamo su errori di connessione se vogliamo provare curl_cffi
+                break
 
-    if last_error:
-        error_details = f"Cannot reach URL '{url}' after attempts. Details: {last_error}"
-        print(f"ERROR: {error_details}")
-        return None, fallback_used, str(last_error)
-
+    # 2. Fallback su curl_cffi se aiohttp ha fallito (per blocchi o errori)
     if not html_content:
-        # Questo caso si verifica se tutti i tentativi falliscono con 429
-        final_error = f"Failed to retrieve content from '{url}' after {max_retries} attempts due to 429 errors."
+        print(f"aiohttp fallito. Avvio procedura di fallback avanzata per {url}...")
+        content, error = await _fetch_with_curl_cffi(url, timeout)
+        if content:
+            html_content = content
+            last_error = None
+            print("Fallback curl_cffi riuscito!")
+        else:
+            print(f"Anche curl_cffi ha fallito: {error}")
+            last_error = error
+
+    # Se ancora nessun contenuto, rinunciamo
+    if not html_content:
+        final_error = f"Impossibile recuperare il contenuto da '{url}'. Ultimo errore: {last_error}"
         print(f"ERROR: {final_error}")
         return None, fallback_used, final_error
 
-    # 1. Prova con Trafilatura (eseguito in un thread per non bloccare)
+    # 3. Estrazione con Trafilatura
     try:
         extracted_data = await asyncio.to_thread(
             trafilatura.bare_extraction,
@@ -223,7 +237,6 @@ async def scrape_article(
         extracted_data = None
 
     article = None
-    # Soglia minima ridotta per Trafilatura (da 150 a 50 caratteri)
     if extracted_data and extracted_data.text and len(extracted_data.text) > 50:
         article = ArticleContent(
             title=extracted_data.title or "Titolo non disponibile",
@@ -242,12 +255,9 @@ async def scrape_article(
             ],
         )
     else:
-        # 2. Se Trafilatura fallisce, usa il fallback BeautifulSoup
-        print(
-            "Trafilatura ha estratto poco o nessun testo. Tentativo di fallback con BeautifulSoup..."
-        )
+        # 4. Fallback BeautifulSoup
+        print("Trafilatura insufficiente. Tentativo fallback BeautifulSoup...")
         fallback_used = True
-
         fallback_content = await _scrape_with_beautifulsoup(
             html_content.decode("utf-8", errors="ignore")
         )
@@ -258,12 +268,7 @@ async def scrape_article(
                 text=fallback_content["text"],
                 url=url,
             )
-            print(
-                f"BeautifulSoup ha estratto {len(fallback_content['text'])} caratteri di testo."
-            )
         else:
-            print(
-                "Anche il fallback con BeautifulSoup non ha estratto contenuto sufficiente."
-            )
+            print("Anche il fallback BeautifulSoup ha fallito.")
 
     return article, fallback_used, None
