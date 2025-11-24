@@ -103,151 +103,172 @@ async def process_url(
     animation_task = None
 
     try:
-        article_content, fallback_used, error_details = await scrape_article(url)
+        async with asyncio.timeout(300):  # 5 minutes timeout
+            article_content, fallback_used, error_details = await scrape_article(url)
 
-        animation_task = asyncio.create_task(
-            animate_loading_message(
-                context,
-                chat_id,
-                processing_message.message_id,
-                stop_animation_event,
-                fallback_mode=fallback_used,
+            animation_task = asyncio.create_task(
+                animate_loading_message(
+                    context,
+                    chat_id,
+                    processing_message.message_id,
+                    stop_animation_event,
+                    fallback_mode=fallback_used,
+                )
             )
-        )
 
-        if not article_content:
+            if not article_content:
+                if animation_task:
+                    stop_animation_event.set()
+                    await animation_task
+                error_message = (
+                    f"😥 <b>Unable to extract content from the URL.</b>\n"
+                    f"Here are the technical details:\n<pre>{error_details}</pre>"
+                )
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=processing_message.message_id,
+                    text=error_message,
+                    parse_mode="HTML",
+                )
+                return
+
+            article_id = hashlib.sha256(url.encode()).hexdigest()[:32]
+            if "articles" not in context.user_data:
+                context.user_data["articles"] = {}
+            context.user_data["articles"][article_id] = {
+                "article_content": article_content
+            }
+
+            default_model = (
+                load_available_models()[0]
+                if load_available_models()
+                else "gemini-2.5-flash"
+            )
+            model_name = context.user_data.get("short_summary_model", default_model)
+
+            summary_data = await summarize_article(
+                article_content,
+                summary_type,
+                model_name=model_name,
+                use_web_search=use_web_search,
+                use_url_context=use_url_context,
+            )
+
+            if not summary_data:
+                raise ValueError("Could not generate summary.")
+
+            # Check for retry flag first
+            if summary_data.get("needs_retry"):
+                error_message = summary_data.get("summary")
+                retry_keyboard = get_retry_keyboard(
+                    url, summary_type, use_web_search, use_url_context
+                )
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=processing_message.message_id,
+                    text=error_message,
+                    parse_mode="HTML",
+                    reply_markup=retry_keyboard,
+                )
+                return
+
+            summary_text = summary_data.get("summary")
+            if "ERRORE:" in summary_text:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=processing_message.message_id,
+                    text=summary_text,
+                    parse_mode="HTML",
+                )
+                return
+
+            # --- Success Case ---
+            llm_hashtags = []
+            summary_text_clean = summary_text
+            hashtag_match = re.match(r"^(#\S+(?:\s+#\S+)*)\s*", summary_text)
+            if hashtag_match:
+                hashtag_line = hashtag_match.group(1)
+                llm_hashtags = parse_hashtags(hashtag_line)
+                summary_text_clean = summary_text[hashtag_match.end() :].strip()
+
+            final_hashtags = (
+                parse_hashtags(",".join(article_content.tags))
+                if article_content.tags
+                else llm_hashtags
+            )
+
+            context.user_data["articles"][article_id][
+                "one_paragraph_summary"
+            ] = summary_text_clean
+            context.user_data["articles"][article_id]["hashtags"] = final_hashtags
+
+            add_to_history(chat_id, url, summary_text_clean, final_hashtags)
+
+            no_hashtags_found = not final_hashtags
+            formatted_summary = format_summary_text(summary_text_clean)
+            article_title = article_content.title or "Article"
+            random_emoji = random.choice(TITLE_EMOJIS)
+
+            message_sections = [f"**{random_emoji} {article_title}**"]
+            if no_hashtags_found:
+                message_sections.append(">No Hashtag")
+            else:
+                message_sections.append(">" + " ".join(final_hashtags))
+            message_sections.append(formatted_summary)
+            message_sections.append(f"[📖 Original Article]({url})")
+            message_sections.append(f"_Summary generated with {model_name}_")
+
+            message_markdown = "\n\n".join(filter(None, message_sections))
+            telegram_message = telegramify_markdown.markdownify(
+                message_markdown, normalize_whitespace=False
+            )
+
+            keyboard_buttons = [
+                InlineKeyboardButton(
+                    "📄 Create Telegraph Page",
+                    callback_data=f"create_telegraph_page:{article_id}",
+                )
+            ]
+            if no_hashtags_found:
+                keyboard_buttons.append(
+                    InlineKeyboardButton(
+                        "🔄 Retry Hashtags", callback_data=f"retry_hashtags:{article_id}"
+                    )
+                )
+            reply_markup = InlineKeyboardMarkup([keyboard_buttons])
+
             if animation_task:
                 stop_animation_event.set()
                 await animation_task
-            error_message = (
-                f"😥 <b>Unable to extract content from the URL.</b>\n"
-                f"Here are the technical details:\n<pre>{error_details}</pre>"
+
+            await context.bot.delete_message(
+                chat_id=chat_id, message_id=processing_message.message_id
             )
-            await context.bot.edit_message_text(
+            await context.bot.send_message(
                 chat_id=chat_id,
-                message_id=processing_message.message_id,
-                text=error_message,
-                parse_mode="HTML",
+                text=telegram_message,
+                reply_markup=reply_markup,
+                parse_mode="MarkdownV2",
+                reply_to_message_id=message.message_id,
             )
-            return
 
-        article_id = hashlib.sha256(url.encode()).hexdigest()[:32]
-        if "articles" not in context.user_data:
-            context.user_data["articles"] = {}
-        context.user_data["articles"][article_id] = {"article_content": article_content}
-
-        default_model = (
-            load_available_models()[0]
-            if load_available_models()
-            else "gemini-2.5-flash"
-        )
-        model_name = context.user_data.get("short_summary_model", default_model)
-
-        summary_data = await summarize_article(
-            article_content,
-            summary_type,
-            model_name=model_name,
-            use_web_search=use_web_search,
-            use_url_context=use_url_context,
-        )
-
-        if not summary_data:
-            raise ValueError("Could not generate summary.")
-
-        # Check for retry flag first
-        if summary_data.get("needs_retry"):
-            error_message = summary_data.get("summary")
-            retry_keyboard = get_retry_keyboard(
-                url, summary_type, use_web_search, use_url_context
-            )
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=processing_message.message_id,
-                text=error_message,
-                parse_mode="HTML",
-                reply_markup=retry_keyboard,
-            )
-            return
-
-        summary_text = summary_data.get("summary")
-        if "ERRORE:" in summary_text:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=processing_message.message_id,
-                text=summary_text,
-                parse_mode="HTML",
-            )
-            return
-
-        # --- Success Case ---
-        llm_hashtags = []
-        summary_text_clean = summary_text
-        hashtag_match = re.match(r"^(#\S+(?:\s+#\S+)*)\s*", summary_text)
-        if hashtag_match:
-            hashtag_line = hashtag_match.group(1)
-            llm_hashtags = parse_hashtags(hashtag_line)
-            summary_text_clean = summary_text[hashtag_match.end() :].strip()
-
-        final_hashtags = (
-            parse_hashtags(",".join(article_content.tags))
-            if article_content.tags
-            else llm_hashtags
-        )
-
-        context.user_data["articles"][article_id][
-            "one_paragraph_summary"
-        ] = summary_text_clean
-        context.user_data["articles"][article_id]["hashtags"] = final_hashtags
-
-        add_to_history(chat_id, url, summary_text_clean, final_hashtags)
-
-        no_hashtags_found = not final_hashtags
-        formatted_summary = format_summary_text(summary_text_clean)
-        article_title = article_content.title or "Article"
-        random_emoji = random.choice(TITLE_EMOJIS)
-
-        message_sections = [f"**{random_emoji} {article_title}**"]
-        if no_hashtags_found:
-            message_sections.append(">No Hashtag")
-        else:
-            message_sections.append(">" + " ".join(final_hashtags))
-        message_sections.append(formatted_summary)
-        message_sections.append(f"[📖 Original Article]({url})")
-        message_sections.append(f"_Summary generated with {model_name}_")
-
-        message_markdown = "\n\n".join(filter(None, message_sections))
-        telegram_message = telegramify_markdown.markdownify(
-            message_markdown, normalize_whitespace=False
-        )
-
-        keyboard_buttons = [
-            InlineKeyboardButton(
-                "📄 Create Telegraph Page",
-                callback_data=f"create_telegraph_page:{article_id}",
-            )
-        ]
-        if no_hashtags_found:
-            keyboard_buttons.append(
-                InlineKeyboardButton(
-                    "🔄 Retry Hashtags", callback_data=f"retry_hashtags:{article_id}"
-                )
-            )
-        reply_markup = InlineKeyboardMarkup([keyboard_buttons])
-
-        if animation_task:
+    except TimeoutError:
+        if animation_task and not stop_animation_event.is_set():
             stop_animation_event.set()
             await animation_task
-
-        await context.bot.delete_message(
-            chat_id=chat_id, message_id=processing_message.message_id
-        )
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=telegram_message,
-            reply_markup=reply_markup,
-            parse_mode="MarkdownV2",
-            reply_to_message_id=message.message_id,
-        )
+        print(f"URL processing timed out for: {url}", flush=True)
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=processing_message.message_id,
+                text="⚠️ Request timed out. The operation took longer than 5 minutes. Please try again later.",
+                parse_mode="HTML",
+            )
+        except TelegramError as te:
+            print(
+                f"Failed to send timeout message due to Telegram API error: {te}",
+                flush=True,
+            )
 
     except Exception as e:
         if animation_task and not stop_animation_event.is_set():
@@ -441,59 +462,77 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # 1. Re-scrape the article
-        article_content, _, error_details = await scrape_article(url)
-        if not article_content:
+        async with asyncio.timeout(300):  # 5 minutes timeout
+            # 1. Re-scrape the article
+            article_content, _, error_details = await scrape_article(url)
+            if not article_content:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=processing_message.message_id,
+                    text=f"😥 <b>Could not re-fetch article content.</b>\n<pre>{error_details}</pre>",
+                    parse_mode="HTML",
+                )
+                return
+
+            # 2. Extract the previous summary text from the message
+            # We'll just take the text before the "Original Article" link
+            summary_text = replied_message.text.split("📖 Original Article")[0].strip()
+
+            # 3. Call the new answer_question function
+            default_model = (
+                load_available_models()[0]
+                if load_available_models()
+                else "gemini-1.5-flash"
+            )
+            model_name = context.user_data.get("short_summary_model", default_model)
+
+            answer_data = await answer_question(
+                article=article_content,
+                question=user_question,
+                summary=summary_text,
+                model_name=model_name,
+            )
+
+            stop_animation_event.set()
+            await animation_task
+
+            if not answer_data or "ERRORE:" in answer_data.get("summary", ""):
+                error_message = answer_data.get("summary", "An unknown error occurred.")
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=processing_message.message_id,
+                    text=error_message,
+                    parse_mode="HTML",
+                )
+                return
+
+            # 4. Send the answer
+            formatted_answer = telegramify_markdown.markdownify(
+                answer_data["summary"], normalize_whitespace=False
+            )
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_message.message_id,
-                text=f"😥 <b>Could not re-fetch article content.</b>\n<pre>{error_details}</pre>",
-                parse_mode="HTML",
+                text=formatted_answer,
+                parse_mode="MarkdownV2",
             )
-            return
 
-        # 2. Extract the previous summary text from the message
-        # We'll just take the text before the "Original Article" link
-        summary_text = replied_message.text.split("📖 Original Article")[0].strip()
-
-        # 3. Call the new answer_question function
-        default_model = (
-            load_available_models()[0]
-            if load_available_models()
-            else "gemini-1.5-flash"
-        )
-        model_name = context.user_data.get("short_summary_model", default_model)
-
-        answer_data = await answer_question(
-            article=article_content,
-            question=user_question,
-            summary=summary_text,
-            model_name=model_name,
-        )
-
+    except TimeoutError:
         stop_animation_event.set()
         await animation_task
-
-        if not answer_data or "ERRORE:" in answer_data.get("summary", ""):
-            error_message = answer_data.get("summary", "An unknown error occurred.")
+        print(f"Q&A processing timed out for: {url}", flush=True)
+        try:
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_message.message_id,
-                text=error_message,
+                text="⚠️ Request timed out. The operation took longer than 5 minutes. Please try again later.",
                 parse_mode="HTML",
             )
-            return
-
-        # 4. Send the answer
-        formatted_answer = telegramify_markdown.markdownify(
-            answer_data["summary"], normalize_whitespace=False
-        )
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=processing_message.message_id,
-            text=formatted_answer,
-            parse_mode="MarkdownV2",
-        )
+        except TelegramError as te:
+            print(
+                f"Failed to send timeout message due to Telegram API error: {te}",
+                flush=True,
+            )
 
     except Exception as e:
         stop_animation_event.set()
