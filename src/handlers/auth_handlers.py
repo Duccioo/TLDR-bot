@@ -5,8 +5,8 @@ Authentication handlers for the Telegram bot.
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from config import BOT_PASSWORD, AUTH
-from decorators import AUTHORIZED_USERS, is_authorized
 from keyboards import get_main_keyboard
+from core.user_manager import add_authorized_user, is_user_authorized
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -14,7 +14,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     print(f"Received /start command from user {user_id}")
 
-    if not is_authorized(user_id):
+    if BOT_PASSWORD and not is_user_authorized(user_id):
         await update.message.reply_text(
             "🔐 This bot is password protected. Please enter the password to continue:",
             reply_markup=ReplyKeyboardRemove(),
@@ -40,7 +40,7 @@ async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if password == BOT_PASSWORD:
-        AUTHORIZED_USERS.append(user_id)
+        add_authorized_user(user_id)
         print(f"User {user_id} authorized successfully.")
         context.user_data["web_search"] = False
         context.user_data["url_context"] = False
