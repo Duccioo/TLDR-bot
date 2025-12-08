@@ -43,5 +43,5 @@ async def api_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a summary of the API quota usage."""
     summary = get_quota_summary()
     await update.message.reply_text(
-        f"📊 <b>Gemini API Quota</b> 📊\n\n{summary}", parse_mode="HTML"
+        f"{summary}", parse_mode="HTML"
     )

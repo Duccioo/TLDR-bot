@@ -1,6 +1,5 @@
 """
-Modulo per la generazione di riassunti di articoli web con LLM.
-Utilizza Google Gemini per la generazione dei riassunti.
+Module for generating article summaries using LLMs (Gemini, Groq, OpenRouter).
 """
 
 import asyncio
@@ -12,32 +11,31 @@ from dotenv import load_dotenv
 
 # ---
 from core.extractor import ArticleContent
-from core.quota_manager import update_model_usage, wait_for_rate_limit
+from core.quota_manager import update_model_usage, wait_for_rate_limit, get_quota_data
 from google import genai
 from google.genai import types
-from config import SUMMARY_LANGUAGE
+from openai import OpenAI
+from config import SUMMARY_LANGUAGE, GROQ_API_KEY, OPENROUTER_API_KEY
 
-# Carica le variabili d'ambiente dal file .env
+# Load environment variables from .env
 load_dotenv()
 
 
 def _extract_keywords(text: str) -> List[str]:
-    print("\\n--- Arricchimento: Estrazione parole chiave simulata ---")
+    print("\n--- Enrichment: Simulated Keyword Extraction ---")
     base_keywords = ["tecnologia", "innovazione", "sostenibility"]
-    words = re.findall(r"\\b\\w{5,}\\b", text.lower())
+    words = re.findall(r"\b\w{5,}\b", text.lower())
     if len(words) > 2:
         base_keywords.extend(words[:2])
     return base_keywords
 
 
-# --- Funzione di generazione Hashtag ---
-# (Questa funzione rimane invariata)
 def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
     candidates: Set[str] = set()
     if article.tags:
         candidates.update([tag.lower() for tag in article.tags])
     if article.title:
-        title_words = re.findall(r"\\b\\w{4,}\\b", article.title.lower())
+        title_words = re.findall(r"\b\w{4,}\b", article.title.lower())
         candidates.update(title_words)
     keywords = _extract_keywords(article.text)
     candidates.update([kw.lower() for kw in keywords])
@@ -51,86 +49,66 @@ def generate_hashtags(article: ArticleContent, summary_text: str) -> str:
     return " ".join(list(hashtags)[:8])
 
 
-# --- Funzione di chiamata all'LLM (Implementazione con Google Gemini) ---
-def _call_llm_api(
+def _clean_model_name(model_name: str) -> tuple[str, str]:
+    """
+    Strips provider prefix from model name if present.
+    Returns (clean_model_name, provider).
+    """
+    if model_name.startswith("Gemini: "):
+        return model_name.replace("Gemini: ", ""), "gemini"
+    elif model_name.startswith("Groq: "):
+        return model_name.replace("Groq: ", ""), "groq"
+    elif model_name.startswith("OpenRouter: "):
+        return model_name.replace("OpenRouter: ", ""), "openrouter"
+
+    # Fallback/Legacy detection logic
+    quota_data = get_quota_data()
+    if model_name in quota_data.get("groq", {}):
+        return model_name, "groq"
+    elif model_name in quota_data.get("openrouter", {}):
+        return model_name, "openrouter"
+
+    return model_name, "gemini" # Default
+
+
+def _call_gemini_api(
     system_instruction: str,
     user_prompt: str,
-    model_name: str = "gemini-1.5-flash",
+    model_name: str,
     tools: Optional[List[types.Tool]] = None,
-    max_retries: int = 4,  # 1 tentativo iniziale + 3 retry
+    max_retries: int = 4,
     temperature: float = 0.6,
     top_p: float = 0.95,
     top_k: int = 40,
 ) -> Dict[str, Any]:
-    """
-    Chiama l'API di Google Gemini per generare un riassunto basato sul prompt.
-    Include un meccanismo di retry progressivo per errori 503.
-
-    Args:
-        system_instruction: Le istruzioni di sistema per il modello.
-        user_prompt: Il prompt dell'utente con il contenuto dell'articolo.
-        model_name: Il nome del modello Gemini da utilizzare.
-        tools: Una lista di tool da passare al modello.
-        max_retries: Numero massimo di tentativi.
-        temperature: Parametro di temperatura per la generazione, che controlla la casualità.
-        top_p: Parametro top_p per la generazione, ovvero la soglia di probabilità cumulativa.
-        top_k: Parametro top_k per la generazione, ovvero il numero di token più probabili da considerare.
-
-    Returns:
-        Un dizionario contenente il riassunto generato e il conteggio dei token,
-        o un messaggio di errore.
-    """
+    """Calls Google Gemini API."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        return {
-            "summary": "**ERRORE:** La variabile d'ambiente `GEMINI_API_KEY` non è stata impostata.",
-            "token_count": 0,
-        }
+        return {"summary": "**ERROR:** GEMINI_API_KEY not set.", "token_count": 0}
 
-    # Definisci i ritardi progressivi per i tentativi (in secondi)
     retry_delays = [15, 30, 60]
 
     for attempt in range(max_retries):
         try:
-            print(
-                f"\\n--- Tentativo {attempt + 1}/{max_retries} di chiamata all'API di Google Gemini ({model_name})... ---"
-            )
-
-            # Crea il client con il nuovo SDK
+            print(f"\n--- Attempt {attempt + 1}/{max_retries} calling Gemini ({model_name})... ---")
             client = genai.Client(api_key=api_key)
+            contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)])]
 
-            # Prepara i contenuti dell'utente
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=user_prompt),
-                    ],
-                ),
-            ]
-
-            # Prepara la configurazione
             generate_content_config = types.GenerateContentConfig(
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
-                system_instruction=[
-                    types.Part.from_text(text=system_instruction),
-                ],
+                system_instruction=[types.Part.from_text(text=system_instruction)],
             )
-
-            # Aggiungi tools alla configurazione se presenti
             if tools:
                 generate_content_config.tools = tools
 
-            # Genera il contenuto
             response = client.models.generate_content(
                 model=model_name,
                 contents=contents,
                 config=generate_content_config,
             )
 
-            # Estrai il testo e il conteggio dei token
             summary_text = ""
             if hasattr(response, "text"):
                 summary_text = response.text
@@ -139,65 +117,133 @@ def _call_llm_api(
                     if hasattr(part, "text"):
                         summary_text += part.text
 
-            # Estrai il conteggio dei token in modo sicuro
             token_count = 0
             try:
                 if hasattr(response, "usage_metadata"):
                     usage = response.usage_metadata
                     if hasattr(usage, "total_token_count"):
                         token_count = usage.total_token_count
-                    elif hasattr(usage, "prompt_token_count") and hasattr(
-                        usage, "candidates_token_count"
-                    ):
-                        token_count = (
-                            usage.prompt_token_count + usage.candidates_token_count
-                        )
+                    elif hasattr(usage, "prompt_token_count") and hasattr(usage, "candidates_token_count"):
+                        token_count = usage.prompt_token_count + usage.candidates_token_count
             except AttributeError as e:
-                print(
-                    f"--- Avviso: Impossibile estrarre il conteggio dei token: {e} ---"
-                )
-                token_count = 0
+                print(f"--- Warning: Could not extract token count: {e} ---")
 
-            print("--- Chiamata API completata con successo! ---")
-            return {"summary": summary_text.strip(), "token_count": token_count}
+            print("--- API Call Success! ---")
+            return {"summary": summary_text.strip(), "token_count": token_count, "provider": "gemini"}
 
         except Exception as e:
-            # Controlla se l'errore è un 503 Service Unavailable
             if "503" in str(e) and "UNAVAILABLE" in str(e):
-                # Se non siamo all'ultimo tentativo, attendi e riprova
                 if attempt < len(retry_delays):
                     delay = retry_delays[attempt]
-                    print(
-                        f"--- ERRORE 503 (Model Overloaded) al tentativo {attempt + 1}. Attendo {delay} secondi... ---"
-                    )
+                    print(f"--- ERROR 503 (Overloaded). Waiting {delay}s... ---")
                     time.sleep(delay)
-                    continue  # Riprova
+                    continue
                 else:
-                    # Tutti i tentativi (inclusi i retry) sono falliti
-                    print(
-                        f"--- ERRORE 503 (Model Overloaded) al tentativo finale {attempt + 1}. Nessun altro tentativo. ---"
-                    )
-                    return {
-                        "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
-                        "token_count": 0,
-                        "needs_retry": True,  # Aggiungo un flag per il gestore
-                    }
+                    print("--- ERROR 503 Final failure. ---")
+                    return {"summary": f"**ERROR:** {e}", "token_count": 0, "needs_retry": True}
             else:
-                # Se l'errore non è un 503, esci subito
-                print(f"--- ERRORE non recuperabile durante la chiamata API: {e} ---")
-                return {
-                    "summary": f"**ERRORE:** Impossibile completare la richiesta. Dettagli: {e}",
-                    "token_count": 0,
+                print(f"--- Unrecoverable API Error: {e} ---")
+                return {"summary": f"**ERROR:** {e}", "token_count": 0}
+    return {"summary": "**ERROR:** Unexpected issue after retries.", "token_count": 0}
+
+
+def _call_openai_compatible_api(
+    system_instruction: str,
+    user_prompt: str,
+    model_name: str,
+    provider: str,
+    max_retries: int = 4,
+    temperature: float = 0.6,
+) -> Dict[str, Any]:
+    """Calls OpenAI-compatible APIs (Groq, OpenRouter)."""
+
+    if provider == "groq":
+        api_key = GROQ_API_KEY
+        base_url = "https://api.groq.com/openai/v1"
+    elif provider == "openrouter":
+        api_key = OPENROUTER_API_KEY
+        base_url = "https://openrouter.ai/api/v1"
+    else:
+        return {"summary": f"**ERROR:** Unknown provider {provider}", "token_count": 0}
+
+    if not api_key:
+        return {"summary": f"**ERROR:** {provider.upper()}_API_KEY not set.", "token_count": 0}
+
+    retry_delays = [15, 30, 60]
+
+    for attempt in range(max_retries):
+        try:
+            print(f"\n--- Attempt {attempt + 1}/{max_retries} calling {provider} ({model_name})... ---")
+            client = OpenAI(api_key=api_key, base_url=base_url)
+
+            messages = [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_prompt}
+            ]
+
+            # Additional headers for OpenRouter
+            extra_headers = {}
+            if provider == "openrouter":
+                extra_headers = {
+                    "HTTP-Referer": "https://github.com/your-repo-url", # Optional
+                    "X-Title": "Telegram Summary Bot" # Optional
                 }
 
-    # Se il loop finisce senza successo (dovrebbe essere gestito sopra)
-    return {
-        "summary": "**ERRORE:** Si è verificato un problema imprevisto dopo tutti i tentativi.",
-        "token_count": 0,
-    }
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                extra_headers=extra_headers if extra_headers else None
+            )
+
+            summary_text = response.choices[0].message.content
+            token_count = response.usage.total_tokens if response.usage else 0
+
+            print("--- API Call Success! ---")
+            return {"summary": summary_text.strip(), "token_count": token_count, "provider": provider}
+
+        except Exception as e:
+            # Basic retry logic for rate limits or server errors
+            if "429" in str(e) or "503" in str(e) or "500" in str(e):
+                 if attempt < len(retry_delays):
+                    delay = retry_delays[attempt]
+                    print(f"--- Error {e}. Waiting {delay}s... ---")
+                    time.sleep(delay)
+                    continue
+
+            print(f"--- Unrecoverable API Error: {e} ---")
+            return {"summary": f"**ERROR:** {e}", "token_count": 0}
+
+    return {"summary": "**ERROR:** Unexpected issue after retries.", "token_count": 0}
 
 
-# --- Funzione Principale ---
+def _call_llm_api(
+    system_instruction: str,
+    user_prompt: str,
+    model_name: str,
+    tools: Optional[List[types.Tool]] = None,
+    max_retries: int = 4,
+    temperature: float = 0.6,
+    top_p: float = 0.95,
+    top_k: int = 40,
+) -> Dict[str, Any]:
+    """
+    Dispatcher function to call the appropriate LLM API based on the model name.
+    """
+    # Clean the model name and detect provider from prefix
+    model_name, provider = _clean_model_name(model_name)
+
+    if provider == "gemini":
+        return _call_gemini_api(
+            system_instruction, user_prompt, model_name, tools, max_retries, temperature, top_p, top_k
+        )
+    else:
+        # Groq/OpenRouter don't support Google Search tools in this implementation yet
+        return _call_openai_compatible_api(
+            system_instruction, user_prompt, model_name, provider, max_retries, temperature
+        )
+
+
 async def summarize_article(
     article: ArticleContent,
     summary_type: str,
@@ -207,18 +253,18 @@ async def summarize_article(
     model_name: str = "gemini-2.5-flash",
 ) -> Optional[Dict[str, Any]]:
     """
-    Funzione asincrona per orchestrare la generazione del riassunto.
+    Orchestrates summary generation.
     """
     prompt_path = os.path.join(prompts_dir, f"{summary_type}.md")
     if not os.path.exists(prompt_path):
-        print(f"Errore: Il file di prompt non esiste: {prompt_path}")
+        print(f"Error: Prompt file not found: {prompt_path}")
         return None
 
     try:
         with open(prompt_path, "r", encoding="utf-8") as f:
             template = f.read()
     except IOError as e:
-        print(f"Errore nella lettura del file di prompt: {e}")
+        print(f"Error reading prompt file: {e}")
         return None
 
     template = template.replace("{{summary_language}}", SUMMARY_LANGUAGE)
@@ -229,7 +275,7 @@ async def summarize_article(
         user_template = "**Contesto dell'articolo:**" + parts[1]
     else:
         system_instruction = template
-        user_template = "**Contesto dell'articolo:**\\n{{title}}\\n{{text}}"
+        user_template = "**Contesto dell'articolo:**\n{{title}}\n{{text}}"
 
     user_prompt = user_template.replace("{{title}}", article.title or "N/A")
     user_prompt = user_prompt.replace("{{author}}", article.author or "N/A")
@@ -247,22 +293,24 @@ async def summarize_article(
     if use_url_context and article.url:
         user_prompt = f"Basandoti sul contenuto dell'URL {article.url}, {user_prompt}"
 
-    # Esegui le operazioni bloccanti in un thread separato
-    await asyncio.to_thread(wait_for_rate_limit, model_name)
+    # We need to clean model name here for rate limiting check too
+    clean_model, provider = _clean_model_name(model_name)
+    await asyncio.to_thread(wait_for_rate_limit, clean_model, provider)
 
     llm_response = await asyncio.to_thread(
         _call_llm_api,
         system_instruction=system_instruction,
         user_prompt=user_prompt,
-        model_name=model_name,
+        model_name=model_name, # Pass original with prefix, _call_llm_api cleans it again
         tools=tools or None,
     )
 
     summary_text = llm_response["summary"]
     token_count = llm_response["token_count"]
+    # provider is returned by llm_response, but we already know it
 
-    if "ERRORE:" not in summary_text:
-        await asyncio.to_thread(update_model_usage, model_name, token_count)
+    if "ERRORE:" not in summary_text and "ERROR:" not in summary_text:
+        await asyncio.to_thread(update_model_usage, clean_model, token_count, provider)
 
     return {
         "summary": summary_text,
@@ -294,28 +342,24 @@ async def answer_question(
 
     template = template.replace("{{summary_language}}", SUMMARY_LANGUAGE)
 
-    # Split template into system instruction and user prompt
     if "---" in template:
         parts = template.split("---", 1)
         system_instruction = parts[0].strip()
         user_template = parts[1].strip()
     else:
-        # Fallback if the separator is missing
         system_instruction = "You are a helpful assistant."
         user_template = template
 
-    # Populate the user prompt template
     user_prompt = user_template.replace("{{title}}", article.title or "N/A")
     user_prompt = user_prompt.replace("{{url}}", article.url or "N/A")
     user_prompt = user_prompt.replace("{{summary}}", summary or "N/A")
     user_prompt = user_prompt.replace("{{text}}", article.text or "N/A")
     user_prompt = user_prompt.replace("{{question}}", question)
 
-    # For Q&A, let's not enable web search by default to keep it focused.
     tools = []
 
-    # Run blocking operations in a separate thread
-    await asyncio.to_thread(wait_for_rate_limit, model_name)
+    clean_model, provider = _clean_model_name(model_name)
+    await asyncio.to_thread(wait_for_rate_limit, clean_model, provider)
 
     llm_response = await asyncio.to_thread(
         _call_llm_api,
@@ -325,14 +369,12 @@ async def answer_question(
         tools=tools or None,
     )
 
-    answer_text = llm_response.get("summary", "") # Reusing 'summary' key from the dict
+    answer_text = llm_response.get("summary", "")
     token_count = llm_response.get("token_count", 0)
 
-    if "ERRORE:" not in answer_text:
-        await asyncio.to_thread(update_model_usage, model_name, token_count)
+    if "ERRORE:" not in answer_text and "ERROR:" not in answer_text:
+        await asyncio.to_thread(update_model_usage, clean_model, token_count, provider)
 
-    # The function in the handler expects a dictionary with a "summary" key.
-    # Let's keep the return structure consistent.
     return {
         "summary": answer_text
     }

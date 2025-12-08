@@ -10,3 +10,5 @@ packaging
 markdown-it-py
 telegramify-markdown
 curl_cffi
+openai
+requests

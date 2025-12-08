@@ -1,54 +1,33 @@
 """
-Modulo per la gestione delle quote API di Google Gemini.
+Module for managing API quotas and models for Google Gemini, Groq, and OpenRouter.
 """
 
 import json
 import os
 import time
+import requests
 from threading import RLock
 from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Any, Optional
+
+from config import GROQ_API_KEY, OPENROUTER_API_KEY
 
 request_timestamps = {}
 QUOTA_FILE = os.path.join("data", "quota.json")
-lock = RLock()  # Changed from Lock to RLock to allow re-entrant locking
+lock = RLock()
 
 
 def initialize_quota_file():
     """
-    Inizializza il file quota.json con i dati dei modelli text-out del free tier di Google Gemini.
-    Dati presi da: https://ai.google.dev/gemini-api/docs/rate-limits#free-tier
+    Initializes the quota.json file with data from Gemini, Groq, and OpenRouter.
     """
-    # Dati aggiornati al 19 ottobre 2025 per il free tier (text-out models)
+    # Default data structure
     default_quota_data = {
         "gemini": {
-            "gemini-2.5-pro": {
-                "requests_per_minute": 2,
-                "tokens_per_minute": 125000,
-                "requests_per_day": 50,
-                "usage_timestamps": [],
-            },
-            "gemini-2.5-flash": {
+             "gemini-2.5-flash": {
                 "requests_per_minute": 10,
                 "tokens_per_minute": 250000,
                 "requests_per_day": 250,
-                "usage_timestamps": [],
-            },
-            "gemini-2.5-flash-preview": {
-                "requests_per_minute": 10,
-                "tokens_per_minute": 250000,
-                "requests_per_day": 250,
-                "usage_timestamps": [],
-            },
-            "gemini-2.5-flash-lite": {
-                "requests_per_minute": 15,
-                "tokens_per_minute": 250000,
-                "requests_per_day": 1000,
-                "usage_timestamps": [],
-            },
-            "gemini-2.5-flash-lite-preview": {
-                "requests_per_minute": 15,
-                "tokens_per_minute": 250000,
-                "requests_per_day": 1000,
                 "usage_timestamps": [],
             },
             "gemini-2.0-flash": {
@@ -57,156 +36,296 @@ def initialize_quota_file():
                 "requests_per_day": 200,
                 "usage_timestamps": [],
             },
-            "gemini-2.0-flash-lite": {
-                "requests_per_minute": 30,
-                "tokens_per_minute": 1000000,
-                "requests_per_day": 200,
-                "usage_timestamps": [],
-            },
-        }
+        },
+        "groq": {},
+        "openrouter": {}
     }
-    # Crea la directory se non esiste
+
+    # Fetch models from APIs
+    try:
+        if GROQ_API_KEY:
+            groq_models = fetch_groq_models()
+            for model in groq_models:
+                 # Default Groq Free Tier limits (approximate/conservative)
+                default_quota_data["groq"][model] = {
+                    "requests_per_minute": 30,
+                    "requests_per_day": 14400, # Approx
+                    "tokens_per_minute": 6000,
+                    "usage_timestamps": []
+                }
+    except Exception as e:
+        print(f"Error initializing Groq models: {e}")
+
+    try:
+        if OPENROUTER_API_KEY:
+            openrouter_models = fetch_openrouter_models()
+            for model in openrouter_models:
+                default_quota_data["openrouter"][model] = {
+                    "usage_timestamps": []
+                }
+    except Exception as e:
+        print(f"Error initializing OpenRouter models: {e}")
+
+    # Create directory if not exists
     os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
 
-    # Salva i dati nel file
+    # Save data
     with open(QUOTA_FILE, "w", encoding="utf-8") as f:
         json.dump(default_quota_data, f, indent=4)
 
-    print(f"✅ File {QUOTA_FILE} inizializzato con successo!")
+    print(f"✅ File {QUOTA_FILE} initialized successfully!")
     return default_quota_data
 
 
 def get_quota_data():
-    """Legge i dati sulle quote dal file JSON."""
+    """Reads quota data from JSON file."""
     with lock:
         try:
             with open(QUOTA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:
-            # Se il file non esiste, lo inizializza
-            print(f"⚠️  File {QUOTA_FILE} non trovato. Inizializzazione in corso...")
+            print(f"⚠️  File {QUOTA_FILE} not found. Initializing...")
             return initialize_quota_file()
         except json.JSONDecodeError:
-            print(f"⚠️  Errore nel parsing di {QUOTA_FILE}. Reinizializzazione...")
+            print(f"⚠️  Error parsing {QUOTA_FILE}. Re-initializing...")
             return initialize_quota_file()
 
 
 def save_quota_data(data):
-    """Salva i dati sulle quote nel file JSON."""
+    """Saves quota data to JSON file."""
     with lock:
-        # Crea la directory se non esiste
         os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
         with open(QUOTA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
 
-def update_model_usage(model_name: str, token_count: int):
+def fetch_groq_models() -> List[str]:
+    """Fetches available models from Groq API."""
+    if not GROQ_API_KEY:
+        return []
+
+    url = "https://api.groq.com/openai/v1/models"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return [model["id"] for model in data.get("data", [])]
+    except Exception as e:
+        print(f"Error fetching Groq models: {e}")
+        return []
+
+
+def fetch_openrouter_models() -> List[str]:
+    """Fetches available models from OpenRouter API."""
+    if not OPENROUTER_API_KEY:
+        return []
+
+    url = "https://openrouter.ai/api/v1/models"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        # Sort by pricing (low to high) or popularity could be better, but just taking top 20 for now to avoid huge lists
+        models = [model["id"] for model in data.get("data", [])]
+        # Filter mostly free or popular ones could be good, but let's return all and let UI handle or limit
+        return models[:30] # Limit to top 30 to avoid blowing up the UI
+    except Exception as e:
+        print(f"Error fetching OpenRouter models: {e}")
+        return []
+
+
+def get_openrouter_quota_info() -> Dict[str, Any]:
+    """Fetches quota/credit info from OpenRouter."""
+    if not OPENROUTER_API_KEY:
+        return {}
+
+    url = "https://openrouter.ai/api/v1/auth/key"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return response.json().get("data", {})
+        return {}
+    except Exception as e:
+        print(f"Error checking OpenRouter quota: {e}")
+        return {}
+
+
+def sync_models():
+    """Updates the quota file with currently available models."""
+    data = get_quota_data()
+    updated = False
+
+    if GROQ_API_KEY:
+        current_groq = data.get("groq", {})
+        fetched_groq = fetch_groq_models()
+        for model in fetched_groq:
+            if model not in current_groq:
+                current_groq[model] = {
+                    "requests_per_minute": 30, # Default conservative
+                    "requests_per_day": 14400,
+                    "tokens_per_minute": 6000,
+                    "usage_timestamps": []
+                }
+                updated = True
+        data["groq"] = current_groq
+
+    if OPENROUTER_API_KEY:
+        current_or = data.get("openrouter", {})
+        fetched_or = fetch_openrouter_models()
+        for model in fetched_or:
+            if model not in current_or:
+                current_or[model] = { "usage_timestamps": [] }
+                updated = True
+        data["openrouter"] = current_or
+
+    if updated:
+        save_quota_data(data)
+
+
+def update_model_usage(model_name: str, token_count: int, provider: str = "gemini"):
     """
-    Aggiorna l'utilizzo di un modello, registrando timestamp e conteggio token.
+    Updates usage for a model.
     """
     with lock:
         data = get_quota_data()
-        if "gemini" in data and model_name in data["gemini"]:
-            if "usage_timestamps" not in data["gemini"][model_name]:
-                data["gemini"][model_name]["usage_timestamps"] = []
 
-            # Aggiunge un dizionario con timestamp e token
+        # Handle provider detection if not explicit (legacy support)
+        if provider == "gemini" and model_name not in data.get("gemini", {}):
+            # Try to find model in other providers
+            if model_name in data.get("groq", {}):
+                provider = "groq"
+            elif model_name in data.get("openrouter", {}):
+                provider = "openrouter"
+
+        if provider in data and model_name in data[provider]:
+            if "usage_timestamps" not in data[provider][model_name]:
+                data[provider][model_name]["usage_timestamps"] = []
+
             usage_record = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "tokens": token_count,
             }
-            data["gemini"][model_name]["usage_timestamps"].append(usage_record)
+            data[provider][model_name]["usage_timestamps"].append(usage_record)
+
+            # Keep only last 24h of history to prevent file bloat
+            now = datetime.now(timezone.utc)
+            data[provider][model_name]["usage_timestamps"] = [
+                r for r in data[provider][model_name]["usage_timestamps"]
+                if now - datetime.fromisoformat(r["timestamp"]) < timedelta(days=1)
+            ]
+
             save_quota_data(data)
 
 
 def get_quota_summary():
     """
-    Restituisce un riepilogo testuale delle quote di utilizzo, includendo RPM, RPD e TPM.
+    Returns a text summary of usage quotas.
     """
     with lock:
         data = get_quota_data()
-        if not data or "gemini" not in data:
-            return "Nessun dato di quota disponibile."
-
-        summary = "<b>Riepilogo Quote API Gemini (Free Tier):</b>\n\n"
+        summary = "<b>📊 API Quota Summary</b>\n\n"
         now = datetime.now(timezone.utc)
-        for model, details in data["gemini"].items():
-            rpm_limit = details.get("requests_per_minute", 0)
-            rpd_limit = details.get("requests_per_day", 0)
-            tpm_limit = details.get("tokens_per_minute", 0)
-            timestamps = details.get("usage_timestamps", [])
 
-            # Filtra le richieste dell'ultimo minuto
-            recent_requests = []
-            for r in timestamps:
-                ts = datetime.fromisoformat(r["timestamp"])
-                # Se il timestamp è naive, aggiungilo il timezone UTC
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                if now - ts <= timedelta(minutes=1):
-                    recent_requests.append(r)
+        # Gemini
+        if "gemini" in data:
+            summary += "<b>🔹 Google Gemini (Free Tier)</b>\n"
+            for model, details in data["gemini"].items():
+                rpm_limit = details.get("requests_per_minute", 0)
+                timestamps = details.get("usage_timestamps", [])
 
-            rpm_usage = len(recent_requests)
-            tpm_usage = sum(r["tokens"] for r in recent_requests)
-            rpm_percentage = (rpm_usage / rpm_limit * 100) if rpm_limit > 0 else 0
-            tpm_percentage = (tpm_usage / tpm_limit * 100) if tpm_limit > 0 else 0
+                # Filter last minute
+                recent_requests = [
+                    r for r in timestamps
+                    if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(minutes=1)
+                ]
+                rpm_usage = len(recent_requests)
 
-            # Filtra le richieste di oggi
-            today_requests = []
-            for r in timestamps:
-                ts = datetime.fromisoformat(r["timestamp"])
-                # Se il timestamp è naive, aggiungilo il timezone UTC
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                if now.date() == ts.date():
-                    today_requests.append(r)
+                summary += f"• <code>{model}</code>: {rpm_usage}/{rpm_limit} RPM\n"
+            summary += "\n"
 
-            rpd_usage = len(today_requests)
-            rpd_percentage = (rpd_usage / rpd_limit * 100) if rpd_limit > 0 else 0
+        # Groq
+        if "groq" in data and GROQ_API_KEY:
+            summary += "<b>🔹 Groq</b>\n"
+            # Show aggregate or per model? Groq limits are usually global or per-model group
+            # Just showing active models usage for brevity
+            active_models = [m for m, d in data["groq"].items() if d.get("usage_timestamps")]
+            if not active_models:
+                 summary += "<i>No recent usage.</i>\n"
+            for model in active_models:
+                details = data["groq"][model]
+                rpm_limit = details.get("requests_per_minute", 30)
+                timestamps = details.get("usage_timestamps", [])
+                recent_requests = [
+                    r for r in timestamps
+                    if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(minutes=1)
+                ]
+                summary += f"• <code>{model}</code>: {len(recent_requests)}/{rpm_limit} RPM\n"
+            summary += "\n"
 
-            summary += f"<b>Modello:</b> <code>{model}</code>\n"
-            summary += (
-                f"  - <b>RPM:</b> {rpm_usage}/{rpm_limit} ({rpm_percentage:.2f}%)\n"
-            )
-            summary += (
-                f"  - <b>TPM:</b> {tpm_usage}/{tpm_limit} ({tpm_percentage:.2f}%)\n"
-            )
-            summary += (
-                f"  - <b>RPD:</b> {rpd_usage}/{rpd_limit} ({rpd_percentage:.2f}%)\n\n"
-            )
+        # OpenRouter
+        if "openrouter" in data and OPENROUTER_API_KEY:
+            summary += "<b>🔹 OpenRouter</b>\n"
+            or_info = get_openrouter_quota_info()
+            if or_info:
+                limit = or_info.get("limit")
+                usage = or_info.get("usage", 0)
+
+                limit_str = f"${limit:.2f}" if limit else "Unlimited"
+                usage_str = f"${usage:.4f}"
+
+                summary += f"• Credit Used: {usage_str} / {limit_str}\n"
+            else:
+                summary += "<i>Could not fetch credit info.</i>\n"
 
         return summary
 
 
-def wait_for_rate_limit(model_name: str):
+def wait_for_rate_limit(model_name: str, provider: str = "gemini"):
     """
-    Controlla se una nuova richiesta rispetta il rate limit.
-    Se il limite è stato raggiunto, attende il tempo necessario.
+    Checks rate limits and waits if necessary.
     """
-    rate_limits = get_quota_data()["gemini"]
+    data = get_quota_data()
+
+    # Auto-detect provider if default
+    if provider == "gemini" and model_name not in data.get("gemini", {}):
+         if model_name in data.get("groq", {}):
+             provider = "groq"
+         elif model_name in data.get("openrouter", {}):
+             provider = "openrouter"
+
+    if provider not in data or model_name not in data[provider]:
+        return
+
+    # Check RPM
+    limit = data[provider][model_name].get("requests_per_minute", 0)
+    if limit <= 0:
+        return
 
     with lock:
-        if model_name not in rate_limits:
-            return  # Nessun limite specificato per questo modello
-
-        limit = rate_limits[model_name]["requests_per_minute"]
         now = time.time()
+        key = f"{provider}:{model_name}"
 
-        if model_name not in request_timestamps:
-            request_timestamps[model_name] = []
+        if key not in request_timestamps:
+            request_timestamps[key] = []
 
-        # Rimuovi i timestamp più vecchi di un minuto
-        request_timestamps[model_name] = [
-            t for t in request_timestamps[model_name] if now - t < 60
+        # Clean old timestamps
+        request_timestamps[key] = [
+            t for t in request_timestamps[key] if now - t < 60
         ]
 
-        if len(request_timestamps[model_name]) >= limit:
-            # Calcola il tempo di attesa
-            time_to_wait = 60 - (now - request_timestamps[model_name][0])
-            print(
-                f"--- Rate limit raggiunto per {model_name}. Attesa di {time_to_wait:.2f} secondi. ---"
-            )
+        if len(request_timestamps[key]) >= limit:
+            time_to_wait = 60 - (now - request_timestamps[key][0]) + 1 # +1 buffer
+            print(f"--- Rate limit reached for {model_name} ({provider}). Waiting {time_to_wait:.2f}s ---")
             time.sleep(time_to_wait)
 
-        # Aggiungi il timestamp della nuova richiesta
-        request_timestamps[model_name].append(time.time())
+        request_timestamps[key].append(time.time())
