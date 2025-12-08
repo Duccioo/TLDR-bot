@@ -15,6 +15,9 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_PASSWORD = os.getenv("BOT_PASSWORD")
 SUMMARY_LANGUAGE = os.getenv("SUMMARY_LANGUAGE", "English")
 
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
 # Paths
 PROMPTS_FOLDER = os.path.join("src", "prompts")
 QUOTA_FILE_PATH = os.path.join("data", "quota.json")
@@ -68,9 +71,23 @@ def load_available_models():
     try:
         with open(QUOTA_FILE_PATH, "r", encoding="utf-8") as f:
             quota_data = json.load(f)
-            # Extract model names from the gemini section
-            available_models = list(quota_data.get("gemini", {}).keys())
-            return available_models
+            models = []
+
+            # Gemini
+            for m in quota_data.get("gemini", {}).keys():
+                models.append(f"Gemini: {m}")
+
+            # Groq
+            if GROQ_API_KEY:
+                for m in quota_data.get("groq", {}).keys():
+                    models.append(f"Groq: {m}")
+
+            # OpenRouter
+            if OPENROUTER_API_KEY:
+                for m in quota_data.get("openrouter", {}).keys():
+                    models.append(f"OpenRouter: {m}")
+
+            return models
     except FileNotFoundError:
         print(f"Warning: {QUOTA_FILE_PATH} not found. Using default models.")
         return ["gemini-2.5-flash", "gemini-2.0-flash"]

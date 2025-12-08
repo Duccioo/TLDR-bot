@@ -22,7 +22,7 @@ def get_main_keyboard():
     keyboard = [
         ["📝 Choose Prompt", "🤖 Change Model"],
         ["🌐 Web Search On/Off", "🔗 URL Context On/Off"],
-        ["📊 Gemini API Quota"],
+        ["📊 API Quota"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -30,7 +30,8 @@ def get_main_keyboard():
 def get_model_keyboard():
     """Returns the model selection keyboard."""
     models = load_available_models()
-    keyboard = [[model] for model in models]
+    # Chunk models into rows of 2 to avoid super long keyboards
+    keyboard = [models[i:i + 2] for i in range(0, len(models), 2)]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 

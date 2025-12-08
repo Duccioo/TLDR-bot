@@ -109,7 +109,7 @@ def setup_handlers(application: Application):
 
     # Add handler for API quota
     application.add_handler(
-        MessageHandler(filters.Regex("^📊 Gemini API Quota$"), api_quota)
+        MessageHandler(filters.Regex("^📊 API Quota$"), api_quota)
     )
 
     # Add handlers for toggling features
@@ -158,10 +158,13 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     # Initialize quota.json file if it doesn't exist
-    from core.quota_manager import get_quota_data
+    from core.quota_manager import get_quota_data, sync_models
 
     print("🔍 Verifica esistenza file quota.json...")
     get_quota_data()  # This will create the file if it doesn't exist
+
+    print("🔄 Sincronizzazione modelli dai provider...")
+    sync_models()
 
     print(f"Initializing bot with token: {TELEGRAM_BOT_TOKEN[:10]}...")
     application = (
