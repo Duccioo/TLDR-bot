@@ -24,7 +24,7 @@ def initialize_quota_file():
     # Default data structure
     default_quota_data = {
         "gemini": {
-             "gemini-2.5-flash": {
+            "gemini-2.5-flash": {
                 "requests_per_minute": 10,
                 "tokens_per_minute": 250000,
                 "requests_per_day": 250,
@@ -38,7 +38,7 @@ def initialize_quota_file():
             },
         },
         "groq": {},
-        "openrouter": {}
+        "openrouter": {},
     }
 
     # Fetch models from APIs
@@ -46,12 +46,12 @@ def initialize_quota_file():
         if GROQ_API_KEY:
             groq_models = fetch_groq_models()
             for model in groq_models:
-                 # Default Groq Free Tier limits (approximate/conservative)
+                # Default Groq Free Tier limits (approximate/conservative)
                 default_quota_data["groq"][model] = {
                     "requests_per_minute": 30,
-                    "requests_per_day": 14400, # Approx
+                    "requests_per_day": 14400,  # Approx
                     "tokens_per_minute": 6000,
-                    "usage_timestamps": []
+                    "usage_timestamps": [],
                 }
     except Exception as e:
         print(f"Error initializing Groq models: {e}")
@@ -60,9 +60,7 @@ def initialize_quota_file():
         if OPENROUTER_API_KEY:
             openrouter_models = fetch_openrouter_models()
             for model in openrouter_models:
-                default_quota_data["openrouter"][model] = {
-                    "usage_timestamps": []
-                }
+                default_quota_data["openrouter"][model] = {"usage_timestamps": []}
     except Exception as e:
         print(f"Error initializing OpenRouter models: {e}")
 
@@ -107,7 +105,7 @@ def fetch_groq_models() -> List[str]:
     url = "https://api.groq.com/openai/v1/models"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     try:
@@ -121,7 +119,7 @@ def fetch_groq_models() -> List[str]:
 
 
 def fetch_openrouter_models() -> List[str]:
-    """Fetches available models from OpenRouter API."""
+    """Fetches available :free models from OpenRouter API."""
     if not OPENROUTER_API_KEY:
         return []
 
@@ -131,10 +129,13 @@ def fetch_openrouter_models() -> List[str]:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        # Sort by pricing (low to high) or popularity could be better, but just taking top 20 for now to avoid huge lists
-        models = [model["id"] for model in data.get("data", [])]
-        # Filter mostly free or popular ones could be good, but let's return all and let UI handle or limit
-        return models[:30] # Limit to top 30 to avoid blowing up the UI
+        # Filter only :free models as per user requirement
+        models = [
+            model["id"]
+            for model in data.get("data", [])
+            if model["id"].endswith(":free")
+        ]
+        return models
     except Exception as e:
         print(f"Error fetching OpenRouter models: {e}")
         return []
@@ -145,10 +146,8 @@ def get_openrouter_quota_info() -> Dict[str, Any]:
     if not OPENROUTER_API_KEY:
         return {}
 
-    url = "https://openrouter.ai/api/v1/auth/key"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}"
-    }
+    url = "https://openrouter.ai/api/v1/key"
+    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
 
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -158,6 +157,70 @@ def get_openrouter_quota_info() -> Dict[str, Any]:
     except Exception as e:
         print(f"Error checking OpenRouter quota: {e}")
         return {}
+
+
+def update_groq_rate_limits(model_name: str, headers: dict):
+    """
+    Updates Groq rate limits from response headers.
+    Headers expected:
+    - x-ratelimit-limit-requests / x-ratelimit-remaining-requests
+    - x-ratelimit-limit-tokens / x-ratelimit-remaining-tokens
+    - x-ratelimit-reset-requests / x-ratelimit-reset-tokens
+    """
+    with lock:
+        data = get_quota_data()
+        if "groq" not in data or model_name not in data["groq"]:
+            return
+
+        model_data = data["groq"][model_name]
+
+        # Parse headers (case-insensitive)
+        headers_lower = {k.lower(): v for k, v in headers.items()}
+
+        if "x-ratelimit-limit-requests" in headers_lower:
+            try:
+                model_data["requests_per_minute"] = int(headers_lower["x-ratelimit-limit-requests"])
+            except ValueError:
+                pass
+        if "x-ratelimit-remaining-requests" in headers_lower:
+            try:
+                model_data["remaining_requests"] = int(headers_lower["x-ratelimit-remaining-requests"])
+            except ValueError:
+                pass
+        if "x-ratelimit-limit-tokens" in headers_lower:
+            try:
+                model_data["tokens_per_minute"] = int(headers_lower["x-ratelimit-limit-tokens"])
+            except ValueError:
+                pass
+        if "x-ratelimit-remaining-tokens" in headers_lower:
+            try:
+                model_data["remaining_tokens"] = int(headers_lower["x-ratelimit-remaining-tokens"])
+            except ValueError:
+                pass
+        if "x-ratelimit-reset-requests" in headers_lower:
+            model_data["reset_requests"] = headers_lower["x-ratelimit-reset-requests"]
+        if "x-ratelimit-reset-tokens" in headers_lower:
+            model_data["reset_tokens"] = headers_lower["x-ratelimit-reset-tokens"]
+
+        save_quota_data(data)
+
+
+def update_openrouter_limits():
+    """Fetches and stores OpenRouter limits in quota data."""
+    info = get_openrouter_quota_info()
+    if not info:
+        return
+
+    with lock:
+        data = get_quota_data()
+        data["openrouter_limits"] = {
+            "limit": info.get("limit"),
+            "limit_remaining": info.get("limit_remaining"),
+            "usage": info.get("usage", 0),
+            "usage_daily": info.get("usage_daily", 0),
+            "is_free_tier": info.get("is_free_tier", True),
+        }
+        save_quota_data(data)
 
 
 def sync_models():
@@ -171,10 +234,10 @@ def sync_models():
         for model in fetched_groq:
             if model not in current_groq:
                 current_groq[model] = {
-                    "requests_per_minute": 30, # Default conservative
+                    "requests_per_minute": 30,  # Default conservative
                     "requests_per_day": 14400,
                     "tokens_per_minute": 6000,
-                    "usage_timestamps": []
+                    "usage_timestamps": [],
                 }
                 updated = True
         data["groq"] = current_groq
@@ -184,7 +247,7 @@ def sync_models():
         fetched_or = fetch_openrouter_models()
         for model in fetched_or:
             if model not in current_or:
-                current_or[model] = { "usage_timestamps": [] }
+                current_or[model] = {"usage_timestamps": []}
                 updated = True
         data["openrouter"] = current_or
 
@@ -220,7 +283,8 @@ def update_model_usage(model_name: str, token_count: int, provider: str = "gemin
             # Keep only last 24h of history to prevent file bloat
             now = datetime.now(timezone.utc)
             data[provider][model_name]["usage_timestamps"] = [
-                r for r in data[provider][model_name]["usage_timestamps"]
+                r
+                for r in data[provider][model_name]["usage_timestamps"]
                 if now - datetime.fromisoformat(r["timestamp"]) < timedelta(days=1)
             ]
 
@@ -245,8 +309,10 @@ def get_quota_summary():
 
                 # Filter last minute
                 recent_requests = [
-                    r for r in timestamps
-                    if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(minutes=1)
+                    r
+                    for r in timestamps
+                    if now - datetime.fromisoformat(r["timestamp"])
+                    <= timedelta(minutes=1)
                 ]
                 rpm_usage = len(recent_requests)
 
@@ -256,36 +322,49 @@ def get_quota_summary():
         # Groq
         if "groq" in data and GROQ_API_KEY:
             summary += "<b>🔹 Groq</b>\n"
-            # Show aggregate or per model? Groq limits are usually global or per-model group
-            # Just showing active models usage for brevity
-            active_models = [m for m, d in data["groq"].items() if d.get("usage_timestamps")]
+            # Show models that have rate limit data from headers
+            active_models = [
+                m for m, d in data["groq"].items()
+                if d.get("remaining_requests") is not None or d.get("usage_timestamps")
+            ]
             if not active_models:
-                 summary += "<i>No recent usage.</i>\n"
+                summary += "<i>Nessun utilizzo recente.</i>\n"
             for model in active_models:
                 details = data["groq"][model]
                 rpm_limit = details.get("requests_per_minute", 30)
-                timestamps = details.get("usage_timestamps", [])
-                recent_requests = [
-                    r for r in timestamps
-                    if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(minutes=1)
-                ]
-                summary += f"• <code>{model}</code>: {len(recent_requests)}/{rpm_limit} RPM\n"
+                rpm_remaining = details.get("remaining_requests", "N/A")
+                tpm_limit = details.get("tokens_per_minute", "N/A")
+                tpm_remaining = details.get("remaining_tokens", "N/A")
+
+                summary += f"• <code>{model}</code>\n"
+                summary += f"  Requests: {rpm_remaining}/{rpm_limit} RPM\n"
+                if tpm_limit != "N/A":
+                    summary += f"  Tokens: {tpm_remaining}/{tpm_limit} TPM\n"
             summary += "\n"
 
         # OpenRouter
         if "openrouter" in data and OPENROUTER_API_KEY:
             summary += "<b>🔹 OpenRouter</b>\n"
-            or_info = get_openrouter_quota_info()
+            # First check stored limits, then fetch if not available
+            or_info = data.get("openrouter_limits", {})
+            if not or_info:
+                or_info = get_openrouter_quota_info()
             if or_info:
                 limit = or_info.get("limit")
+                limit_remaining = or_info.get("limit_remaining")
                 usage = or_info.get("usage", 0)
+                usage_daily = or_info.get("usage_daily", 0)
 
                 limit_str = f"${limit:.2f}" if limit else "Unlimited"
-                usage_str = f"${usage:.4f}"
+                usage_str = f"${usage:.4f}" if usage else "$0.00"
 
-                summary += f"• Credit Used: {usage_str} / {limit_str}\n"
+                summary += f"• Crediti usati: {usage_str} / {limit_str}\n"
+                if limit_remaining is not None:
+                    summary += f"• Rimanenti: ${limit_remaining:.4f}\n"
+                if usage_daily:
+                    summary += f"• Uso oggi: ${usage_daily:.4f}\n"
             else:
-                summary += "<i>Could not fetch credit info.</i>\n"
+                summary += "<i>Impossibile recuperare info crediti.</i>\n"
 
         return summary
 
@@ -298,10 +377,10 @@ def wait_for_rate_limit(model_name: str, provider: str = "gemini"):
 
     # Auto-detect provider if default
     if provider == "gemini" and model_name not in data.get("gemini", {}):
-         if model_name in data.get("groq", {}):
-             provider = "groq"
-         elif model_name in data.get("openrouter", {}):
-             provider = "openrouter"
+        if model_name in data.get("groq", {}):
+            provider = "groq"
+        elif model_name in data.get("openrouter", {}):
+            provider = "openrouter"
 
     if provider not in data or model_name not in data[provider]:
         return
@@ -319,13 +398,13 @@ def wait_for_rate_limit(model_name: str, provider: str = "gemini"):
             request_timestamps[key] = []
 
         # Clean old timestamps
-        request_timestamps[key] = [
-            t for t in request_timestamps[key] if now - t < 60
-        ]
+        request_timestamps[key] = [t for t in request_timestamps[key] if now - t < 60]
 
         if len(request_timestamps[key]) >= limit:
-            time_to_wait = 60 - (now - request_timestamps[key][0]) + 1 # +1 buffer
-            print(f"--- Rate limit reached for {model_name} ({provider}). Waiting {time_to_wait:.2f}s ---")
+            time_to_wait = 60 - (now - request_timestamps[key][0]) + 1  # +1 buffer
+            print(
+                f"--- Rate limit reached for {model_name} ({provider}). Waiting {time_to_wait:.2f}s ---"
+            )
             time.sleep(time_to_wait)
 
         request_timestamps[key].append(time.time())

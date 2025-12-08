@@ -68,7 +68,7 @@ def _clean_model_name(model_name: str) -> tuple[str, str]:
     elif model_name in quota_data.get("openrouter", {}):
         return model_name, "openrouter"
 
-    return model_name, "gemini" # Default
+    return model_name, "gemini"  # Default
 
 
 def _call_gemini_api(
@@ -90,9 +90,15 @@ def _call_gemini_api(
 
     for attempt in range(max_retries):
         try:
-            print(f"\n--- Attempt {attempt + 1}/{max_retries} calling Gemini ({model_name})... ---")
+            print(
+                f"\n--- Attempt {attempt + 1}/{max_retries} calling Gemini ({model_name})... ---"
+            )
             client = genai.Client(api_key=api_key)
-            contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)])]
+            contents = [
+                types.Content(
+                    role="user", parts=[types.Part.from_text(text=user_prompt)]
+                )
+            ]
 
             generate_content_config = types.GenerateContentConfig(
                 temperature=temperature,
@@ -123,13 +129,21 @@ def _call_gemini_api(
                     usage = response.usage_metadata
                     if hasattr(usage, "total_token_count"):
                         token_count = usage.total_token_count
-                    elif hasattr(usage, "prompt_token_count") and hasattr(usage, "candidates_token_count"):
-                        token_count = usage.prompt_token_count + usage.candidates_token_count
+                    elif hasattr(usage, "prompt_token_count") and hasattr(
+                        usage, "candidates_token_count"
+                    ):
+                        token_count = (
+                            usage.prompt_token_count + usage.candidates_token_count
+                        )
             except AttributeError as e:
                 print(f"--- Warning: Could not extract token count: {e} ---")
 
             print("--- API Call Success! ---")
-            return {"summary": summary_text.strip(), "token_count": token_count, "provider": "gemini"}
+            return {
+                "summary": summary_text.strip(),
+                "token_count": token_count,
+                "provider": "gemini",
+            }
 
         except Exception as e:
             if "503" in str(e) and "UNAVAILABLE" in str(e):
@@ -140,7 +154,11 @@ def _call_gemini_api(
                     continue
                 else:
                     print("--- ERROR 503 Final failure. ---")
-                    return {"summary": f"**ERROR:** {e}", "token_count": 0, "needs_retry": True}
+                    return {
+                        "summary": f"**ERROR:** {e}",
+                        "token_count": 0,
+                        "needs_retry": True,
+                    }
             else:
                 print(f"--- Unrecoverable API Error: {e} ---")
                 return {"summary": f"**ERROR:** {e}", "token_count": 0}
@@ -156,6 +174,7 @@ def _call_openai_compatible_api(
     temperature: float = 0.6,
 ) -> Dict[str, Any]:
     """Calls OpenAI-compatible APIs (Groq, OpenRouter)."""
+    from core.quota_manager import update_groq_rate_limits, update_openrouter_limits
 
     if provider == "groq":
         api_key = GROQ_API_KEY
@@ -167,45 +186,68 @@ def _call_openai_compatible_api(
         return {"summary": f"**ERROR:** Unknown provider {provider}", "token_count": 0}
 
     if not api_key:
-        return {"summary": f"**ERROR:** {provider.upper()}_API_KEY not set.", "token_count": 0}
+        return {
+            "summary": f"**ERROR:** {provider.upper()}_API_KEY not set.",
+            "token_count": 0,
+        }
 
     retry_delays = [15, 30, 60]
 
     for attempt in range(max_retries):
         try:
-            print(f"\n--- Attempt {attempt + 1}/{max_retries} calling {provider} ({model_name})... ---")
+            print(
+                f"\n--- Attempt {attempt + 1}/{max_retries} calling {provider} ({model_name})... ---"
+            )
             client = OpenAI(api_key=api_key, base_url=base_url)
 
             messages = [
                 {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_prompt},
             ]
 
             # Additional headers for OpenRouter
             extra_headers = {}
             if provider == "openrouter":
                 extra_headers = {
-                    "HTTP-Referer": "https://github.com/your-repo-url", # Optional
-                    "X-Title": "Telegram Summary Bot" # Optional
+                    "HTTP-Referer": "https://github.com/your-repo-url",  # Optional
+                    "X-Title": "Telegram Summary Bot",  # Optional
                 }
 
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=temperature,
-                extra_headers=extra_headers if extra_headers else None
-            )
+            # Use with_raw_response for Groq to capture rate limit headers
+            if provider == "groq":
+                raw_response = client.chat.completions.with_raw_response.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=temperature,
+                )
+                # Extract and save rate limit headers
+                update_groq_rate_limits(model_name, dict(raw_response.headers))
+                response = raw_response.parse()
+            else:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    extra_headers=extra_headers if extra_headers else None,
+                )
+                # Update OpenRouter limits after successful call
+                if provider == "openrouter":
+                    update_openrouter_limits()
 
             summary_text = response.choices[0].message.content
             token_count = response.usage.total_tokens if response.usage else 0
 
             print("--- API Call Success! ---")
-            return {"summary": summary_text.strip(), "token_count": token_count, "provider": provider}
+            return {
+                "summary": summary_text.strip(),
+                "token_count": token_count,
+                "provider": provider,
+            }
 
         except Exception as e:
             # Basic retry logic for rate limits or server errors
             if "429" in str(e) or "503" in str(e) or "500" in str(e):
-                 if attempt < len(retry_delays):
+                if attempt < len(retry_delays):
                     delay = retry_delays[attempt]
                     print(f"--- Error {e}. Waiting {delay}s... ---")
                     time.sleep(delay)
@@ -235,12 +277,24 @@ def _call_llm_api(
 
     if provider == "gemini":
         return _call_gemini_api(
-            system_instruction, user_prompt, model_name, tools, max_retries, temperature, top_p, top_k
+            system_instruction,
+            user_prompt,
+            model_name,
+            tools,
+            max_retries,
+            temperature,
+            top_p,
+            top_k,
         )
     else:
         # Groq/OpenRouter don't support Google Search tools in this implementation yet
         return _call_openai_compatible_api(
-            system_instruction, user_prompt, model_name, provider, max_retries, temperature
+            system_instruction,
+            user_prompt,
+            model_name,
+            provider,
+            max_retries,
+            temperature,
         )
 
 
@@ -301,7 +355,7 @@ async def summarize_article(
         _call_llm_api,
         system_instruction=system_instruction,
         user_prompt=user_prompt,
-        model_name=model_name, # Pass original with prefix, _call_llm_api cleans it again
+        model_name=model_name,  # Pass original with prefix, _call_llm_api cleans it again
         tools=tools or None,
     )
 
@@ -375,6 +429,4 @@ async def answer_question(
     if "ERRORE:" not in answer_text and "ERROR:" not in answer_text:
         await asyncio.to_thread(update_model_usage, clean_model, token_count, provider)
 
-    return {
-        "summary": answer_text
-    }
+    return {"summary": answer_text}
