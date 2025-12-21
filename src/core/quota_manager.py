@@ -24,16 +24,54 @@ def initialize_quota_file():
     # Default data structure
     default_quota_data = {
         "gemini": {
+            # Gemini Flash Models
             "gemini-2.5-flash": {
-                "requests_per_minute": 10,
+                "requests_per_minute": 5,
                 "tokens_per_minute": 250000,
-                "requests_per_day": 250,
+                "requests_per_day": 20,
                 "usage_timestamps": [],
             },
-            "gemini-2.0-flash": {
-                "requests_per_minute": 15,
-                "tokens_per_minute": 1000000,
-                "requests_per_day": 200,
+            "gemini-2.5-flash-lite": {
+                "requests_per_minute": 10,
+                "tokens_per_minute": 250000,
+                "requests_per_day": 20,
+                "usage_timestamps": [],
+            },
+            "gemini-3-flash": {
+                "requests_per_minute": 5,
+                "tokens_per_minute": 250000,
+                "requests_per_day": 20,
+                "usage_timestamps": [],
+            },
+            # Gemma 3 Models
+            "gemma-3-12b": {
+                "requests_per_minute": 30,
+                "tokens_per_minute": 15000,
+                "requests_per_day": 14400,
+                "usage_timestamps": [],
+            },
+            "gemma-3-1b": {
+                "requests_per_minute": 30,
+                "tokens_per_minute": 15000,
+                "requests_per_day": 14400,
+                "usage_timestamps": [],
+            },
+            "gemma-3-27b": {
+                "requests_per_minute": 30,
+                "tokens_per_minute": 15000,
+                "requests_per_day": 14400,
+                "usage_timestamps": [],
+            },
+            "gemma-3-2b": {
+                "requests_per_minute": 30,
+                "tokens_per_minute": 15000,
+                "requests_per_day": 14400,
+                "usage_timestamps": [],
+            },
+            "gemma-3-4b": {
+                "requests_per_minute": 30,
+                "tokens_per_minute": 15000,
+                "requests_per_day": 14400,
                 "usage_timestamps": [],
             },
         },
