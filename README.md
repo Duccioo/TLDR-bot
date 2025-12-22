@@ -1,3 +1,5 @@
+<div style="display:flex; justify-content:center; padding: 12px;"> <div style="width: min(1100px, 92%); background: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); display:flex; align-items:center; padding: 16px;"> <img src="./TLDR-bot_logo.png" alt="TLDR Bot Icon" style="width:72px; height:72px; border-radius:8px; object-fit:cover; margin-right: 16px;"> <div style="display:flex; flex-direction:column;"> <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 600; font-size: 20px; color:#0f4c81;">TLDR Bot – Article Summarizer</span> <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color:#555;">Semplifica la lettura degli articoli con riassunti intelligenti generati da Gemini</span> </div> </div> </div>
+
 # Article Summarizer Telegram Bot
 
 This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using the Google Gemini large language model.
