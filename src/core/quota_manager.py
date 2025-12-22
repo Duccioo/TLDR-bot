@@ -37,7 +37,7 @@ def initialize_quota_file():
                 "requests_per_day": 20,
                 "usage_timestamps": [],
             },
-            "gemini-3-flash": {
+            "gemini-3-flash-preview": {
                 "requests_per_minute": 5,
                 "tokens_per_minute": 250000,
                 "requests_per_day": 20,
