@@ -1,7 +1,7 @@
 <div align="center">
   <img src="TLDR-bot_logo.png" alt="Project Logo" width="200"/>
   
-  # Nome del Progetto
+  # TLDR Bot
   
   **A Telegram bot scrapes web articles and generates summaries**
   
@@ -11,8 +11,6 @@
 </div>
 
 --- 
-
-# Article Summarizer Telegram Bot
 
 This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using the Google Gemini large language model.
 
