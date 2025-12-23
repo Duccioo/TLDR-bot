@@ -1,15 +1,13 @@
 <div align="center">
-  <img src="logo.png" alt="Project Logo" width="200"/>
+  <img src="TLDR-bot_logo.png" alt="Project Logo" width="200"/>
   
   # Nome del Progetto
   
-  **Una descrizione concisa e accattivante del tuo progetto**
+  **A Telegram bot scrapes web articles and generates summaries**
   
-  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/username/project/releases)
   [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/username/project/actions)
   
-  [Demo](https://demo.example.com) · [Documentazione](https://docs.example.com) · [Segnala Bug](https://github.com/username/project/issues) · [Richiedi Feature](https://github.com/username/project/issues)
+
 </div>
 
 --- 
