@@ -2,15 +2,12 @@
   <img src="TLDR-bot_logo.png" alt="Project Logo" width="200"/>
   
   # TLDR Bot
-  
-  **A Telegram bot scrapes web articles and generates summaries**
-  
+
   [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/username/project/actions)
   
 
 </div>
 
---- 
 
 This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using the Google Gemini large language model.
 
