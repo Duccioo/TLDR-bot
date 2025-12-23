@@ -217,22 +217,30 @@ def update_groq_rate_limits(model_name: str, headers: dict):
 
         if "x-ratelimit-limit-requests" in headers_lower:
             try:
-                model_data["requests_per_minute"] = int(headers_lower["x-ratelimit-limit-requests"])
+                model_data["requests_per_minute"] = int(
+                    headers_lower["x-ratelimit-limit-requests"]
+                )
             except ValueError:
                 pass
         if "x-ratelimit-remaining-requests" in headers_lower:
             try:
-                model_data["remaining_requests"] = int(headers_lower["x-ratelimit-remaining-requests"])
+                model_data["remaining_requests"] = int(
+                    headers_lower["x-ratelimit-remaining-requests"]
+                )
             except ValueError:
                 pass
         if "x-ratelimit-limit-tokens" in headers_lower:
             try:
-                model_data["tokens_per_minute"] = int(headers_lower["x-ratelimit-limit-tokens"])
+                model_data["tokens_per_minute"] = int(
+                    headers_lower["x-ratelimit-limit-tokens"]
+                )
             except ValueError:
                 pass
         if "x-ratelimit-remaining-tokens" in headers_lower:
             try:
-                model_data["remaining_tokens"] = int(headers_lower["x-ratelimit-remaining-tokens"])
+                model_data["remaining_tokens"] = int(
+                    headers_lower["x-ratelimit-remaining-tokens"]
+                )
             except ValueError:
                 pass
         if "x-ratelimit-reset-requests" in headers_lower:
@@ -343,9 +351,10 @@ def get_quota_summary():
             summary += "<b>🔹 Google Gemini (Free Tier)</b>\n"
             for model, details in data["gemini"].items():
                 rpm_limit = details.get("requests_per_minute", 0)
+                rpd_limit = details.get("requests_per_day", 0)
                 timestamps = details.get("usage_timestamps", [])
 
-                # Filter last minute
+                # Filter last minute for RPM
                 recent_requests = [
                     r
                     for r in timestamps
@@ -354,7 +363,17 @@ def get_quota_summary():
                 ]
                 rpm_usage = len(recent_requests)
 
-                summary += f"• <code>{model}</code>: {rpm_usage}/{rpm_limit} RPM\n"
+                # Filter last 24 hours for RPD
+                daily_requests = [
+                    r
+                    for r in timestamps
+                    if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(days=1)
+                ]
+                rpd_usage = len(daily_requests)
+
+                summary += f"• <code>{model}</code>\n"
+                summary += f"  ├ {rpm_usage}/{rpm_limit} RPM\n"
+                summary += f"  └ {rpd_usage}/{rpd_limit} RPD\n"
             summary += "\n"
 
         # Groq
@@ -362,22 +381,34 @@ def get_quota_summary():
             summary += "<b>🔹 Groq</b>\n"
             # Show models that have rate limit data from headers
             active_models = [
-                m for m, d in data["groq"].items()
+                m
+                for m, d in data["groq"].items()
                 if d.get("remaining_requests") is not None or d.get("usage_timestamps")
             ]
             if not active_models:
-                summary += "<i>Nessun utilizzo recente.</i>\n"
+                summary += "<i>No recent usage.</i>\n"
             for model in active_models:
                 details = data["groq"][model]
                 rpm_limit = details.get("requests_per_minute", 30)
+                rpd_limit = details.get("requests_per_day", 14400)
                 rpm_remaining = details.get("remaining_requests", "N/A")
                 tpm_limit = details.get("tokens_per_minute", "N/A")
                 tpm_remaining = details.get("remaining_tokens", "N/A")
+                timestamps = details.get("usage_timestamps", [])
+
+                # Calculate daily usage from timestamps
+                daily_requests = [
+                    r
+                    for r in timestamps
+                    if now - datetime.fromisoformat(r["timestamp"]) <= timedelta(days=1)
+                ]
+                rpd_usage = len(daily_requests)
 
                 summary += f"• <code>{model}</code>\n"
-                summary += f"  Requests: {rpm_remaining}/{rpm_limit} RPM\n"
+                summary += f"  ├ Requests: {rpm_remaining}/{rpm_limit} RPM\n"
+                summary += f"  ├ Daily: {rpd_usage}/{rpd_limit} RPD\n"
                 if tpm_limit != "N/A":
-                    summary += f"  Tokens: {tpm_remaining}/{tpm_limit} TPM\n"
+                    summary += f"  └ Tokens: {tpm_remaining}/{tpm_limit} TPM\n"
             summary += "\n"
 
         # OpenRouter
@@ -392,17 +423,36 @@ def get_quota_summary():
                 limit_remaining = or_info.get("limit_remaining")
                 usage = or_info.get("usage", 0)
                 usage_daily = or_info.get("usage_daily", 0)
+                is_free_tier = or_info.get("is_free_tier", True)
+
+                # OpenRouter free model limits: 20 RPM, 50 RPD (<10 credits) or 1000 RPD (>=10 credits)
+                rpd_limit = 50 if is_free_tier else 1000
 
                 limit_str = f"${limit:.2f}" if limit else "Unlimited"
                 usage_str = f"${usage:.4f}" if usage else "$0.00"
 
-                summary += f"• Crediti usati: {usage_str} / {limit_str}\n"
+                summary += f"• Credits used: {usage_str} / {limit_str}\n"
                 if limit_remaining is not None:
-                    summary += f"• Rimanenti: ${limit_remaining:.4f}\n"
+                    summary += f"• Remaining: ${limit_remaining:.4f}\n"
+
+                # Count daily requests from stored usage for free models
+                daily_req_count = 0
+                for model_name, model_data in data.get("openrouter", {}).items():
+                    timestamps = model_data.get("usage_timestamps", [])
+                    daily_req_count += sum(
+                        1
+                        for r in timestamps
+                        if now - datetime.fromisoformat(r["timestamp"])
+                        <= timedelta(days=1)
+                    )
+
+                summary += (
+                    f"• Free models: {daily_req_count}/{rpd_limit} RPD (20 RPM)\n"
+                )
                 if usage_daily:
-                    summary += f"• Uso oggi: ${usage_daily:.4f}\n"
+                    summary += f"• Today's cost: ${usage_daily:.4f}\n"
             else:
-                summary += "<i>Impossibile recuperare info crediti.</i>\n"
+                summary += "<i>Unable to retrieve credit info.</i>\n"
 
         return summary
 

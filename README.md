@@ -1,94 +1,197 @@
 <div align="center">
-  <img src="TLDR-bot_logo.png" alt="Project Logo" width="200"/>
+  <img src="TLDR-bot_logo.png" alt="TLDR Bot Logo" width="200"/>
   
-  # TLDR Bot
+  # 🤖 TLDR Bot
 
-  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/username/project/actions)
-  
+  **Your AI-Powered Article Summarizer for Telegram**
+
+  [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+  [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+  [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+  [![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue?logo=telegram)](https://core.telegram.org/bots)
+
+  *Scrape any web article, extract its content, and get AI-generated summaries in seconds!*
 
 </div>
 
+---
 
-This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using LLMs.
+## ✨ Features
 
-## Features
+| Feature | Description |
+|---------|-------------|
+| 🔗 **Smart Web Scraping** | Extracts main content from any URL using advanced parsing |
+| 🧠 **Multi-LLM Support** | Choose from **Gemini**, **Groq**, or **OpenRouter** models |
+| 📝 **Customizable Prompts** | Multiple summary styles: Technical, ELI5, Q&A, Social Media, and more |
+| 🌍 **Multi-Language Output** | Configure summary output language via environment variable |
+| 🔍 **Web Search Integration** | Enhance summaries with additional web context |
+| 📰 **Telegraph Publishing** | Generate beautiful, readable Telegraph pages for long summaries |
+| 📊 **API Quota Tracking** | Monitor usage and prevent rate limit issues |
+| 🔐 **Password Protection** | Secure bot access with optional authentication |
+| 🐳 **Docker Ready** | Easy deployment with Docker and Docker Compose |
 
-- **Article Scraping**: Extracts the main content from any given URL.
-- **AI-Powered Summaries**: Utilizes Google's Gemini models to generate high-quality, human-like summaries.
-- **Customizable Prompts**: Supports multiple, customizable prompt templates to generate different summary styles (e.g., technical, ELI5, social media posts).
-- **Configurable Models**: Allows users to choose from different Gemini models for summary generation.
-- **Configurable Summary Language**: Allows users to set the output language for summaries via an environment variable.
-- **Web Search Integration**: Can perform a web search to gather more context for the summary.
-- **Telegraph Integration**: Publishes long-form summaries as clean, readable Telegraph pages.
-- **API Quota Management**: Tracks API usage to prevent exceeding rate limits.
-- **Password Protection**: Secures access to the bot with a password.
-- **Docker Support**: Includes `Dockerfile` and `docker-compose.yml` for easy deployment.
+---
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Prerequisites
+### Prerequisites
 
-- Python 3.11+
-- Docker (optional)
+- 🐍 Python 3.11+
+- 🐳 Docker *(optional, for containerized deployment)*
+- 🔑 API Keys:
+  - [Telegram Bot Token](https://core.telegram.org/bots#botfather)
+  - [Google Gemini API Key](https://makersuite.google.com/app/apikey) *(and/or Groq/OpenRouter)*
 
-### 2. Installation
+### Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-repo/article-summarizer-bot.git
-    cd article-summarizer-bot
-    ```
+#### 1️⃣ Clone the Repository
 
-2.  **Create a `.env` file:**
-    Copy the example file and fill in your credentials:
-    ```bash
-    cp .env.example .env
-    ```
+```bash
+git clone https://github.com/Duccioo/TLDR-bot.git
+cd TLDR-bot
+```
 
-    You will need to provide:
-    - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token.
-    - `GEMINI_API_KEY`: Your Google Gemini API key.
-    - `BOT_PASSWORD`: A password to protect your bot (optional).
-    - `SUMMARY_LANGUAGE`: The desired language for the summaries (e.g., "English", "Italian"). Defaults to "English".
+#### 2️⃣ Configure Environment
 
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+cp .env.example .env
+```
 
-### 3. Running the Bot
+Edit `.env` with your credentials:
 
-#### Without Docker
+```env
+# Required
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+GEMINI_API_KEY=your_gemini_api_key
+
+# Optional: Additional LLM Providers
+GROQ_API_KEY=your_groq_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
+
+# Optional: Bot Settings
+BOT_PASSWORD=your_secure_password
+SUMMARY_LANGUAGE=English
+```
+
+#### 3️⃣ Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## ▶️ Running the Bot
+
+### 🖥️ Local Development
 
 ```bash
 python src/bot.py
 ```
 
-#### With Docker
+### 🐳 Docker Deployment
 
 ```bash
 docker-compose up -d
 ```
 
-## Usage
+---
 
-1.  **Start a chat with your bot** on Telegram and enter the password if you have set one.
-2.  **Send a URL** of an article you want to summarize.
-3.  The bot will reply with a short summary and a button to generate a full Telegraph page.
-4.  Use the keyboard commands to:
-    - **Choose Prompt**: Select a different summary style.
-    - **Change Model**: Switch between different Gemini models.
-    - **Toggle Web Search**: Enable or disable web search for more context.
-    - **Check API Quota**: View your current Gemini API usage.
+## 📖 Usage
 
-## Project Structure
+1. **🚀 Start the bot** — Open your Telegram bot and enter the password (if configured)
+2. **🔗 Send a URL** — Paste any article link
+3. **📄 Get your summary** — Receive an instant AI-generated summary
+4. **📰 Expand to Telegraph** — Click the button to generate a full Telegraph article
 
-- `src/`: Main source code directory.
-  - `core/`: Core logic for scraping, summarizing, and managing history.
-  - `handlers/`: Telegram bot command and message handlers.
-  - `prompts/`: Customizable prompt templates for the LLM.
-- `data/`: Data files, including API quota and user history.
-- `docs/`: In-depth documentation.
-- `Dockerfile`: For building the bot's Docker image.
-- `docker-compose.yml`: For running the bot with Docker Compose.
-- `requirements.txt`: Python dependencies.
+### ⌨️ Available Commands
+
+| Command | Description |
+|---------|-------------|
+| 🎨 **Choose Prompt** | Select summary style (Technical, ELI5, Q&A, etc.) |
+| 🔄 **Change Model** | Switch between Gemini, Groq, or OpenRouter models |
+| 🔍 **Toggle Web Search** | Enable/disable web context enrichment |
+| 📊 **Check Quota** | View your current API usage |
+
+---
+
+## 📁 Project Structure
+
+```
+TLDR-bot/
+├── 📂 src/                    # Source code
+│   ├── 📂 core/               # Core logic
+│   │   ├── extractor.py       # Content extraction
+│   │   ├── scraper.py         # Web scraping
+│   │   ├── summarizer.py      # LLM integration
+│   │   ├── quota_manager.py   # API quota tracking
+│   │   ├── history_manager.py # User history
+│   │   └── user_manager.py    # User management
+│   ├── 📂 handlers/           # Telegram bot handlers
+│   │   ├── auth_handlers.py   # Authentication
+│   │   ├── command_handlers.py
+│   │   ├── message_handlers.py
+│   │   └── callback_handlers.py
+│   ├── 📂 prompts/            # Summary prompt templates
+│   │   ├── technical_summary.md
+│   │   ├── eli5_summary.md
+│   │   ├── social_media_post.md
+│   │   ├── qna.md
+│   │   └── ...
+│   ├── bot.py                 # Main entry point
+│   ├── config.py              # Configuration
+│   └── keyboards.py           # Telegram keyboards
+├── 📂 data/                   # Runtime data (quota, history)
+├── 📂 docs/                   # Documentation
+│   ├── ARCHITECTURE.md
+│   ├── CONFIGURATION.md
+│   ├── CONTRIBUTING.md
+│   └── INSTALLATION.md
+├── 🐳 Dockerfile
+├── 🐳 docker-compose.yml
+├── 📋 requirements.txt
+└── 📄 LICENSE
+```
+
+---
+
+## 🤖 Supported LLM Providers
+
+| Provider | Models | Free Tier |
+|----------|--------|-----------|
+| **Google Gemini** | gemini-2.5-flash, gemini-2.0-flash | ✅ Yes |
+| **Groq** | Various open-source models | ✅ Yes |
+| **OpenRouter** | Multiple models (`:free` suffix) | ✅ Yes |
+
+---
+
+## 📚 Documentation
+
+For more detailed information, check the `/docs` folder:
+
+- 📐 [Architecture](docs/ARCHITECTURE.md) — System design and components
+- ⚙️ [Configuration](docs/CONFIGURATION.md) — All configuration options
+- 🛠️ [Installation](docs/INSTALLATION.md) — Detailed setup guide
+- 🤝 [Contributing](docs/CONTRIBUTING.md) — How to contribute
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on how to submit pull requests.
+
+---
+
+## 📄 License
+
+This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+  **Made with ❤️ for the open-source community**
+
+  ⭐ **Star this repo if you find it useful!** ⭐
+
+</div>
