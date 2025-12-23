@@ -9,7 +9,7 @@
 </div>
 
 
-This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using the Google Gemini large language model.
+This Telegram bot scrapes web articles, extracts their content, and generates customizable summaries using LLMs.
 
 ## Features
 
