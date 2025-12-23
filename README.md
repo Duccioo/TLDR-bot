@@ -1,4 +1,18 @@
-<div style="display:flex; justify-content:center; padding: 12px;"> <div style="width: min(1100px, 92%); background: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); display:flex; align-items:center; padding: 16px;"> <img src="./TLDR-bot_logo.png" alt="TLDR Bot Icon" style="width:72px; height:72px; border-radius:8px; object-fit:cover; margin-right: 16px;"> <div style="display:flex; flex-direction:column;"> <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 600; font-size: 20px; color:#0f4c81;">TLDR Bot – Article Summarizer</span> <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color:#555;">Semplifica la lettura degli articoli con riassunti intelligenti generati da Gemini</span> </div> </div> </div>
+<div align="center">
+  <img src="logo.png" alt="Project Logo" width="200"/>
+  
+  # Nome del Progetto
+  
+  **Una descrizione concisa e accattivante del tuo progetto**
+  
+  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+  [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/username/project/releases)
+  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/username/project/actions)
+  
+  [Demo](https://demo.example.com) · [Documentazione](https://docs.example.com) · [Segnala Bug](https://github.com/username/project/issues) · [Richiedi Feature](https://github.com/username/project/issues)
+</div>
+
+--- 
 
 # Article Summarizer Telegram Bot
 
