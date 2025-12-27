@@ -4,6 +4,8 @@ Fornisce funzioni per estrarre e formattare il contenuto in vari formati.
 """
 
 import asyncio
+import json
+import os
 import random
 import re
 from dataclasses import dataclass
@@ -158,6 +160,46 @@ async def _fetch_with_curl_cffi(url: str, timeout: int = 15) -> Tuple[Optional[b
         return None, f"curl_cffi exception: {e}"
 
 
+async def _fetch_with_flaresolverr(url: str, timeout: int = 60) -> Tuple[Optional[bytes], Optional[str]]:
+    """
+    Attempts to download the URL using FlareSolverr (if configured).
+    """
+    flaresolverr_url = os.getenv("FLARESOLVERR_URL")
+    if not flaresolverr_url:
+        return None, "FlareSolverr not configured"
+
+    print(f"Tentativo di fallback con FlareSolverr per {url}...")
+
+    payload = {
+        "cmd": "request.get",
+        "url": url,
+        "maxTimeout": timeout * 1000  # FlareSolverr expects ms
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                flaresolverr_url,
+                json=payload,
+                timeout=timeout + 5
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get("status") == "ok":
+                        # The HTML response is in solution.response
+                        html_content = data.get("solution", {}).get("response")
+                        if html_content:
+                            return html_content.encode('utf-8'), None
+                        else:
+                            return None, "FlareSolverr returned 'ok' but no content"
+                    else:
+                        return None, f"FlareSolverr error: {data.get('message', 'Unknown error')}"
+                else:
+                    return None, f"FlareSolverr HTTP status: {response.status}"
+    except Exception as e:
+        return None, f"FlareSolverr exception: {e}"
+
+
 async def scrape_article(
     url: str,
     timeout: int = 15,
@@ -214,6 +256,18 @@ async def scrape_article(
             print("Fallback curl_cffi riuscito!")
         else:
             print(f"Anche curl_cffi ha fallito: {error}")
+            last_error = error
+
+    # 3. Fallback to FlareSolverr if curl_cffi also failed
+    if not html_content and os.getenv("FLARESOLVERR_URL"):
+        print(f"curl_cffi fallito. Avvio fallback FlareSolverr per {url}...")
+        content, error = await _fetch_with_flaresolverr(url)
+        if content:
+            html_content = content
+            last_error = None
+            print("Fallback FlareSolverr riuscito!")
+        else:
+            print(f"Anche FlareSolverr ha fallito: {error}")
             last_error = error
 
     # Se ancora nessun contenuto, rinunciamo
