@@ -20,7 +20,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Paths
 PROMPTS_FOLDER = os.path.join("src", "prompts")
-QUOTA_FILE_PATH = os.path.join("data", "quota.json")
+QUOTA_FILE_PATH = os.path.join("src", "data", "quota.json")
 
 # Conversation states
 (

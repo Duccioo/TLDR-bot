@@ -3,7 +3,7 @@ import os
 from typing import List
 
 # Path to the file that stores the authorized user IDs
-AUTHORIZED_USERS_FILE = "data/authorized_users.json"
+AUTHORIZED_USERS_FILE = "src/data/authorized_users.json"
 
 def load_authorized_users() -> List[int]:
     """
