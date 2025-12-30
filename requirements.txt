@@ -12,4 +12,3 @@ telegramify-markdown
 curl_cffi
 openai
 requests
-httpcore<1.0.0
