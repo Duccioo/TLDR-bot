@@ -2,7 +2,7 @@ import json
 import os
 from typing import Dict, List, Any
 
-HISTORY_DIR = "data/history"
+HISTORY_DIR = "src/data/history"
 MAX_HISTORY_SIZE = 100000
 
 

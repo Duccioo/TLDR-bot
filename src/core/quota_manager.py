@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional
 from config import GROQ_API_KEY, OPENROUTER_API_KEY
 
 request_timestamps = {}
-QUOTA_FILE = os.path.join("data", "quota.json")
+QUOTA_FILE = os.path.join("src", "data", "quota.json")
 lock = RLock()
 
 
