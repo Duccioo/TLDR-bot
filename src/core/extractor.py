@@ -10,6 +10,7 @@ import random
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 import aiohttp
 import trafilatura
@@ -48,6 +49,50 @@ class ArticleContent:
             "tags": self.tags,
             "images": self.images,
         }
+
+
+async def _extract_lesswrong(html_content: str, url: str) -> Optional[ArticleContent]:
+    """
+    Extractor personalizzato per LessWrong.
+    Estrae il titolo da h1.PostsPageTitle-root e il testo da div.PostsPage-postContent.
+    """
+    try:
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Estrai il titolo
+        title = "Titolo non disponibile"
+        title_elem = soup.find("h1", class_="PostsPageTitle-root")
+        if title_elem:
+            title = title_elem.get_text(separator=" ", strip=True)
+
+        # Estrai il contenuto
+        content_div = soup.find("div", class_=re.compile(r"PostsPage-postContent"))
+        if not content_div:
+            return None
+
+        # Rimuovi elementi indesiderati dentro il contenuto se necessario (es. script)
+        for element in content_div(["script", "style"]):
+            element.decompose()
+
+        text = content_div.get_text(separator="\n", strip=True)
+
+        # Estrai immagini
+        images = []
+        for img in content_div.find_all("img"):
+            src = img.get("src")
+            if src:
+                images.append(src)
+
+        return ArticleContent(
+            title=title,
+            text=text,
+            url=url,
+            sitename="LessWrong",
+            images=images
+        )
+    except Exception as e:
+        print(f"Errore extractor LessWrong: {e}")
+        return None
 
 
 async def _scrape_with_beautifulsoup(html_content: str) -> Optional[Dict[str, Any]]:
@@ -276,7 +321,22 @@ async def scrape_article(
         print(f"ERROR: {final_error}")
         return None, fallback_used, final_error
 
-    # 3. Estrazione con Trafilatura
+    # 3. Estrazione con Trafilatura (o custom extractor)
+
+    # Controllo custom extractors
+    domain = urlparse(url).netloc
+    extracted_data = None
+    article = None
+
+    if "lesswrong.com" in domain:
+        print("Rilevato LessWrong, utilizzo extractor personalizzato...")
+        article = await _extract_lesswrong(html_content.decode("utf-8", errors="ignore"), url)
+        if article:
+             print("Estrazione custom LessWrong riuscita!")
+             return article, fallback_used, None
+        else:
+             print("Estrazione custom LessWrong fallita, proseguo con Trafilatura...")
+
     try:
         extracted_data = await asyncio.to_thread(
             trafilatura.bare_extraction,
