@@ -18,6 +18,9 @@ SUMMARY_LANGUAGE = os.getenv("SUMMARY_LANGUAGE", "English")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+LINKWARDEN_URL = os.getenv("LINKWARDEN_URL")
+LINKWARDEN_API_KEY = os.getenv("LINKWARDEN_API_KEY")
+
 # Paths
 PROMPTS_FOLDER = os.path.join("src", "prompts")
 QUOTA_FILE_PATH = os.path.join("src", "data", "quota.json")

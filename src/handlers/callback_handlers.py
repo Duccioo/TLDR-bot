@@ -4,6 +4,7 @@ Callback handlers for the Telegram bot.
 
 import re
 import asyncio
+import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -12,7 +13,7 @@ from core.scraper import crea_articolo_telegraph_with_content
 from core.history_manager import load_history, save_history
 from keyboards import get_retry_keyboard
 from utils import parse_hashtags
-from config import load_available_models
+from config import load_available_models, LINKWARDEN_URL, LINKWARDEN_API_KEY
 from handlers.message_handlers import animate_loading_message
 
 
@@ -316,4 +317,63 @@ async def retry_hashtags(update: Update, context: ContextTypes.DEFAULT_TYPE):
             query.id,
             text="😔 Attempt failed. No hashtags generated.",
             show_alert=True,
+        )
+
+async def save_to_linkwarden(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saves the article to LinkWarden."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        article_id = query.data.split(":")[1]
+    except (IndexError, AttributeError):
+        await query.message.reply_text("🤖 ERROR: Invalid article ID.")
+        return
+
+    article_data = context.user_data.get("articles", {}).get(article_id)
+    if not article_data or "article_content" not in article_data:
+        await query.message.reply_text(
+            "🤖 ERROR: Article data expired or not found. Please try sending the URL again."
+        )
+        return
+
+    article_content = article_data["article_content"]
+    one_paragraph_summary = article_data.get("one_paragraph_summary", "")
+    hashtags = article_data.get("hashtags", [])
+
+    # Clean hashtags (remove #)
+    clean_tags = [tag.lstrip("#") for tag in hashtags]
+
+    payload = {
+        "url": article_content.url,
+        "name": article_content.title,
+        "description": one_paragraph_summary,
+        "tags": clean_tags,
+    }
+
+    url = f"{LINKWARDEN_URL.rstrip('/')}/api/v1/links"
+    headers = {
+        "Authorization": f"Bearer {LINKWARDEN_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    await context.bot.answer_callback_query(
+                        query.id, text="✅ Saved to LinkWarden!", show_alert=False
+                    )
+                else:
+                    error_text = await response.text()
+                    print(f"LinkWarden Error: {response.status} - {error_text}")
+                    await context.bot.answer_callback_query(
+                        query.id,
+                        text=f"❌ Failed to save. Status: {response.status}",
+                        show_alert=True,
+                    )
+    except Exception as e:
+        print(f"LinkWarden Exception: {e}")
+        await context.bot.answer_callback_query(
+            query.id, text=f"❌ Error: {str(e)}", show_alert=True
         )
