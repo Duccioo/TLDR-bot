@@ -44,6 +44,7 @@ from handlers.callback_handlers import (
     generate_telegraph_page,
     retry_hashtags,
     retry_summary,
+    save_to_linkwarden,
 )
 
 
@@ -128,6 +129,10 @@ def setup_handlers(application: Application):
     # Add callback handler for retrying hashtags
     application.add_handler(
         CallbackQueryHandler(retry_hashtags, pattern="^retry_hashtags:")
+    )
+    # Add callback handler for saving to LinkWarden
+    application.add_handler(
+        CallbackQueryHandler(save_to_linkwarden, pattern="^save_to_linkwarden:")
     )
     # Add callback handler for retrying the whole summary
     application.add_handler(CallbackQueryHandler(retry_summary, pattern="^retry:"))

@@ -17,7 +17,7 @@ from core.summarizer import summarize_article, answer_question
 from core.history_manager import add_to_history
 from keyboards import get_retry_keyboard
 from utils import format_summary_text, parse_hashtags
-from config import TITLE_EMOJIS, load_available_models
+from config import TITLE_EMOJIS, load_available_models, LINKWARDEN_URL, LINKWARDEN_API_KEY
 
 
 async def animate_loading_message(
@@ -235,6 +235,15 @@ async def process_url(
                         "🔄 Retry Hashtags", callback_data=f"retry_hashtags:{article_id}"
                     )
                 )
+
+            if LINKWARDEN_URL and LINKWARDEN_API_KEY:
+                keyboard_buttons.append(
+                    InlineKeyboardButton(
+                        "📌 Save to LinkWarden",
+                        callback_data=f"save_to_linkwarden:{article_id}",
+                    )
+                )
+
             reply_markup = InlineKeyboardMarkup([keyboard_buttons])
 
             if animation_task:
