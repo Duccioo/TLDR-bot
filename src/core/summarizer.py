@@ -116,12 +116,15 @@ def _call_gemini_api(
             )
 
             summary_text = ""
-            if hasattr(response, "text"):
+            if hasattr(response, "text") and response.text:
                 summary_text = response.text
             elif hasattr(response, "candidates") and response.candidates:
                 for part in response.candidates[0].content.parts:
-                    if hasattr(part, "text"):
+                    if hasattr(part, "text") and part.text:
                         summary_text += part.text
+
+            if not summary_text:
+                return {"summary": "**ERROR:** Model returned empty response.", "token_count": 0}
 
             token_count = 0
             try:
@@ -236,6 +239,9 @@ def _call_openai_compatible_api(
 
             summary_text = response.choices[0].message.content
             token_count = response.usage.total_tokens if response.usage else 0
+
+            if not summary_text:
+                return {"summary": "**ERROR:** Model returned empty response.", "token_count": 0}
 
             print("--- API Call Success! ---")
             return {
