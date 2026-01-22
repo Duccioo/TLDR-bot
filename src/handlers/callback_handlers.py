@@ -95,7 +95,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             return
 
         technical_summary = technical_summary_data.get("summary")
-        if "ERRORE:" in technical_summary:
+        if "ERRORE:" in technical_summary or "ERROR:" in technical_summary:
             raise ValueError(technical_summary)
 
         image_urls = technical_summary_data.get("images")

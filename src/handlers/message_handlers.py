@@ -173,7 +173,7 @@ async def process_url(
                 return
 
             summary_text = summary_data.get("summary")
-            if "ERRORE:" in summary_text:
+            if "ERRORE:" in summary_text or "ERROR:" in summary_text:
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_message.message_id,
@@ -496,7 +496,7 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stop_animation_event.set()
             await animation_task
 
-            if not answer_data or "ERRORE:" in answer_data.get("summary", ""):
+            if not answer_data or "ERRORE:" in answer_data.get("summary", "") or "ERROR:" in answer_data.get("summary", ""):
                 error_message = answer_data.get("summary", "An unknown error occurred.")
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
