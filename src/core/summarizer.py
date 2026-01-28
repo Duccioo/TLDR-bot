@@ -143,7 +143,7 @@ def _call_gemini_api(
 
             print("--- API Call Success! ---")
             return {
-                "summary": summary_text.strip(),
+                "summary": (summary_text or "").strip(),
                 "token_count": token_count,
                 "provider": "gemini",
             }
@@ -245,7 +245,7 @@ def _call_openai_compatible_api(
 
             print("--- API Call Success! ---")
             return {
-                "summary": summary_text.strip(),
+                "summary": (summary_text or "").strip(),
                 "token_count": token_count,
                 "provider": provider,
             }
@@ -331,7 +331,7 @@ async def summarize_article(
 
     if "**Contesto dell'articolo:**" in template:
         parts = template.split("**Contesto dell'articolo:**", 1)
-        system_instruction = parts[0].strip()
+        system_instruction = (parts[0] or "").strip()
         user_template = "**Contesto dell'articolo:**" + parts[1]
     else:
         system_instruction = template
@@ -404,8 +404,8 @@ async def answer_question(
 
     if "---" in template:
         parts = template.split("---", 1)
-        system_instruction = parts[0].strip()
-        user_template = parts[1].strip()
+        system_instruction = (parts[0] or "").strip()
+        user_template = (parts[1] or "").strip()
     else:
         system_instruction = "You are a helpful assistant."
         user_template = template
