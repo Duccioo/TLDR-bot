@@ -29,6 +29,8 @@
 | 📊 **API Quota Tracking** | Monitor usage and prevent rate limit issues |
 | 🔐 **Password Protection** | Secure bot access with optional authentication |
 | 🐳 **Docker Ready** | Easy deployment with Docker and Docker Compose |
+| 📌 **Linkwarden Integration** | Save summarized articles directly to your Linkwarden instance |
+| 🛡️ **FlareSolverr Support** | Bypass Cloudflare protection for difficult sites |
 
 ---
 
@@ -71,6 +73,13 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 # Optional: Bot Settings
 BOT_PASSWORD=your_secure_password
 SUMMARY_LANGUAGE=English
+
+# Optional: Linkwarden
+LINKWARDEN_URL=https://linkwarden.yourdomain.com
+LINKWARDEN_API_KEY=your_linkwarden_api_key
+
+# Optional: Advanced
+FLARESOLVERR_URL=http://localhost:8191/v1
 ```
 
 #### 3️⃣ Install Dependencies
