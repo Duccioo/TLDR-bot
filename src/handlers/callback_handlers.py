@@ -348,7 +348,7 @@ async def save_to_linkwarden(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "url": article_content.url,
         "name": article_content.title,
         "description": one_paragraph_summary,
-        "tags": clean_tags,
+        "tags": [{"name": tag} for tag in clean_tags],
     }
 
     url = f"{LINKWARDEN_URL.rstrip('/')}/api/v1/links"
