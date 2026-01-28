@@ -351,7 +351,10 @@ async def save_to_linkwarden(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "tags": [{"name": tag} for tag in clean_tags],
     }
 
-    url = f"{LINKWARDEN_URL.rstrip('/')}/api/v1/links"
+    linkwarden_base = LINKWARDEN_URL.rstrip('/')
+    if not linkwarden_base.startswith(('http://', 'https://')):
+        linkwarden_base = f"http://{linkwarden_base}"
+    url = f"{linkwarden_base}/api/v1/links"
     headers = {
         "Authorization": f"Bearer {LINKWARDEN_API_KEY}",
         "Content-Type": "application/json",
@@ -363,6 +366,25 @@ async def save_to_linkwarden(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 if response.status == 200:
                     await context.bot.answer_callback_query(
                         query.id, text="✅ Saved to LinkWarden!", show_alert=False
+                    )
+                    
+                    # Update the button text to show it's saved
+                    new_keyboard = []
+                    for row in query.message.reply_markup.inline_keyboard:
+                        new_row = []
+                        for button in row:
+                            if button.callback_data == query.data:
+                                # Create a new button with updated text and no callback data (or keep it)
+                                # We'll keep the callback data but change text so if they click again it just says saved again?
+                                # Or better, change text and keep functionality or disable it. 
+                                # Let's just change text for visual feedback.
+                                new_row.append(InlineKeyboardButton("✅ Saved", callback_data="noop"))
+                            else:
+                                new_row.append(button)
+                        new_keyboard.append(new_row)
+                    
+                    await query.message.edit_reply_markup(
+                        reply_markup=InlineKeyboardMarkup(new_keyboard)
                     )
                 else:
                     error_text = await response.text()
