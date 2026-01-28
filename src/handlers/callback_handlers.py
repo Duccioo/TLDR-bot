@@ -344,10 +344,13 @@ async def save_to_linkwarden(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Clean hashtags (remove #)
     clean_tags = [tag.lstrip("#") for tag in hashtags]
 
+    # Linkwarden has a 2048 character limit for description
+    description = one_paragraph_summary[:2000] + "..." if len(one_paragraph_summary) > 2000 else one_paragraph_summary
+
     payload = {
         "url": article_content.url,
         "name": article_content.title,
-        "description": one_paragraph_summary,
+        "description": description,
         "tags": [{"name": tag} for tag in clean_tags],
     }
 
