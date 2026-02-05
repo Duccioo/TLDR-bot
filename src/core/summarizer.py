@@ -11,7 +11,12 @@ from dotenv import load_dotenv
 
 # ---
 from core.extractor import ArticleContent
-from core.quota_manager import update_model_usage, wait_for_rate_limit, get_quota_data
+from core.quota_manager import (
+    update_model_usage,
+    wait_for_rate_limit,
+    get_quota_data,
+    QuotaExceededError,
+)
 from google import genai
 from google.genai import types
 from openai import OpenAI
@@ -124,7 +129,10 @@ def _call_gemini_api(
                         summary_text += part.text
 
             if not summary_text:
-                return {"summary": "**ERROR:** Model returned empty response.", "token_count": 0}
+                return {
+                    "summary": "**ERROR:** Model returned empty response.",
+                    "token_count": 0,
+                }
 
             token_count = 0
             try:
@@ -162,6 +170,9 @@ def _call_gemini_api(
                         "token_count": 0,
                         "needs_retry": True,
                     }
+            elif "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                print(f"--- Quota Exceeded: {e} ---")
+                raise QuotaExceededError(f"Gemini quota exceeded: {e}")
             else:
                 print(f"--- Unrecoverable API Error: {e} ---")
                 return {"summary": f"**ERROR:** {e}", "token_count": 0}
@@ -177,7 +188,11 @@ def _call_openai_compatible_api(
     temperature: float = 0.6,
 ) -> Dict[str, Any]:
     """Calls OpenAI-compatible APIs (Groq, OpenRouter)."""
-    from core.quota_manager import update_groq_rate_limits, update_openrouter_limits
+    from core.quota_manager import (
+        update_groq_rate_limits,
+        update_openrouter_limits,
+        QuotaExceededError,
+    )
 
     if provider == "groq":
         api_key = GROQ_API_KEY
@@ -241,7 +256,10 @@ def _call_openai_compatible_api(
             token_count = response.usage.total_tokens if response.usage else 0
 
             if not summary_text:
-                return {"summary": "**ERROR:** Model returned empty response.", "token_count": 0}
+                return {
+                    "summary": "**ERROR:** Model returned empty response.",
+                    "token_count": 0,
+                }
 
             print("--- API Call Success! ---")
             return {
@@ -252,12 +270,16 @@ def _call_openai_compatible_api(
 
         except Exception as e:
             # Basic retry logic for rate limits or server errors
-            if "429" in str(e) or "503" in str(e) or "500" in str(e):
+            if "503" in str(e) or "500" in str(e):
                 if attempt < len(retry_delays):
                     delay = retry_delays[attempt]
                     print(f"--- Error {e}. Waiting {delay}s... ---")
                     time.sleep(delay)
                     continue
+
+            if "429" in str(e):
+                print(f"--- Quota Exceeded: {e} ---")
+                raise QuotaExceededError(f"{provider} quota exceeded: {e}")
 
             print(f"--- Unrecoverable API Error: {e} ---")
             return {"summary": f"**ERROR:** {e}", "token_count": 0}

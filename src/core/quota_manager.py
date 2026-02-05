@@ -17,6 +17,12 @@ QUOTA_FILE = os.path.join("src", "data", "quota.json")
 lock = RLock()
 
 
+class QuotaExceededError(Exception):
+    """Exception raised when API quota is exhausted."""
+
+    pass
+
+
 def initialize_quota_file():
     """
     Initializes the quota.json file with data from Gemini, Groq, and OpenRouter.
