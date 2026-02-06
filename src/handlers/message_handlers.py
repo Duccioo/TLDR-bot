@@ -261,14 +261,6 @@ async def process_url(
                 parse_mode="MarkdownV2",
                 reply_to_message_id=message.message_id,
             )
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=telegram_message,
-                reply_markup=reply_markup,
-                parse_mode="MarkdownV2",
-                reply_to_message_id=message.message_id,
-            )
             
     except QuotaExceededError:
         # Re-raise to be handled by the worker
@@ -388,7 +380,10 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ""
     url = None
 
-    message = update.message or update.edited_message
+    if update.edited_message and not update.message:
+        return
+
+    message = update.message
     if not message or not message.text:
         return
 
