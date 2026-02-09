@@ -12,7 +12,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import NetworkError, TelegramError
 from telegram.ext import ContextTypes
 from decorators import authorized
-from core.extractor import scrape_article
+from core.extractor import scrape_article, ArticleContent
 from core.summarizer import summarize_article, answer_question
 from core.history_manager import add_to_history
 from keyboards import get_retry_keyboard
@@ -117,21 +117,43 @@ async def process_url(
                 )
             )
 
+            # Determine model early to check for fallback eligibility
+            default_model = (
+                load_available_models()[0]
+                if load_available_models()
+                else "gemini-2.5-flash"
+            )
+            model_name = context.user_data.get("short_summary_model", default_model)
+
             if not article_content:
-                if animation_task:
-                    stop_animation_event.set()
-                    await animation_task
-                error_message = (
-                    f"😥 <b>Unable to extract content from the URL.</b>\n"
-                    f"Here are the technical details:\n<pre>{error_details}</pre>"
-                )
-                await context.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=processing_message.message_id,
-                    text=error_message,
-                    parse_mode="HTML",
-                )
-                return
+                # Fallback: If Gemini, try to use URL context directly
+                if "gemini" in model_name.lower():
+                    print(f"Scraping failed for {url}. Attempting Gemini URL context fallback.")
+                    article_content = ArticleContent(
+                        title="URL Content (Fallback)",
+                        text="Content not extracted. Please utilize the available tools (Google Search/URL Context) to read and summarize the content directly from the provided URL.",
+                        url=url,
+                        tags=[],
+                        images=[]
+                    )
+                    use_web_search = True
+                    use_url_context = True
+                    fallback_used = True
+                else:
+                    if animation_task:
+                        stop_animation_event.set()
+                        await animation_task
+                    error_message = (
+                        f"😥 <b>Unable to extract content from the URL.</b>\n"
+                        f"Here are the technical details:\n<pre>{error_details}</pre>"
+                    )
+                    await context.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=processing_message.message_id,
+                        text=error_message,
+                        parse_mode="HTML",
+                    )
+                    return
 
             article_id = hashlib.sha256(url.encode()).hexdigest()[:32]
             if "articles" not in context.user_data:
@@ -139,13 +161,6 @@ async def process_url(
             context.user_data["articles"][article_id] = {
                 "article_content": article_content
             }
-
-            default_model = (
-                load_available_models()[0]
-                if load_available_models()
-                else "gemini-2.5-flash"
-            )
-            model_name = context.user_data.get("short_summary_model", default_model)
 
             summary_data = await summarize_article(
                 article_content,
