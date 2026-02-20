@@ -39,7 +39,11 @@ from handlers.conversation_handlers import (
     cancel,
 )
 import asyncio
-from handlers.message_handlers import summarize_url, url_processor_worker, handle_qna_reply
+from handlers.message_handlers import (
+    summarize_url,
+    url_processor_worker,
+    handle_qna_reply,
+)
 from handlers.callback_handlers import (
     generate_telegraph_page,
     retry_hashtags,
@@ -109,9 +113,7 @@ def setup_handlers(application: Application):
     application.add_handler(model_conv_handler)
 
     # Add handler for API quota
-    application.add_handler(
-        MessageHandler(filters.Regex("^📊 API Quota$"), api_quota)
-    )
+    application.add_handler(MessageHandler(filters.Regex("^📊 API Quota$"), api_quota))
 
     # Add handlers for toggling features
     application.add_handler(
@@ -139,7 +141,9 @@ def setup_handlers(application: Application):
 
     # Add the Q&A reply handler. This specifically looks for replies.
     application.add_handler(
-        MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND, handle_qna_reply)
+        MessageHandler(
+            filters.REPLY & filters.TEXT & ~filters.COMMAND, handle_qna_reply
+        )
     )
 
     # Add handler for URL messages (MUST be last to avoid catching everything)
@@ -173,7 +177,10 @@ def main():
 
     print(f"Initializing bot with token: {TELEGRAM_BOT_TOKEN[:10]}...")
     application = (
-        Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init_hook).build()
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .post_init(post_init_hook)
+        .build()
     )
 
     print("Adding handlers...")
@@ -187,6 +194,12 @@ def main():
         application.run_polling(
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True,
+            bootstrap_retries=-1,
+            timeout=30,
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30,
         )
     except KeyboardInterrupt:
         print("\n✓ Bot stopped by user (Ctrl+C)")

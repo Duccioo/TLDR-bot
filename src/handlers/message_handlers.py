@@ -17,7 +17,12 @@ from core.summarizer import summarize_article, answer_question
 from core.history_manager import add_to_history
 from keyboards import get_retry_keyboard
 from utils import format_summary_text, parse_hashtags
-from config import TITLE_EMOJIS, load_available_models, LINKWARDEN_URL, LINKWARDEN_API_KEY
+from config import (
+    TITLE_EMOJIS,
+    load_available_models,
+    LINKWARDEN_URL,
+    LINKWARDEN_API_KEY,
+)
 from core.quota_manager import QuotaExceededError
 
 
@@ -233,7 +238,8 @@ async def process_url(
             if no_hashtags_found:
                 keyboard_buttons.append(
                     InlineKeyboardButton(
-                        "🔄 Retry Hashtags", callback_data=f"retry_hashtags:{article_id}"
+                        "🔄 Retry Hashtags",
+                        callback_data=f"retry_hashtags:{article_id}",
                     )
                 )
 
@@ -251,23 +257,39 @@ async def process_url(
                 stop_animation_event.set()
                 await animation_task
 
-            await context.bot.delete_message(
-                chat_id=chat_id, message_id=processing_message.message_id
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=telegram_message,
-                reply_markup=reply_markup,
-                parse_mode="MarkdownV2",
-                reply_to_message_id=message.message_id,
-            )
-            
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=telegram_message,
+                    reply_markup=reply_markup,
+                    parse_mode="MarkdownV2",
+                    reply_to_message_id=message.message_id,
+                )
+            except TelegramError as te:
+                print(
+                    f"Failed to send summary due to Telegram API error: {te}",
+                    flush=True,
+                )
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="⚠️ Temporary Telegram error while sending the summary. Please try again in a moment.",
+                    reply_to_message_id=message.message_id,
+                    parse_mode="HTML",
+                )
+            finally:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=chat_id, message_id=processing_message.message_id
+                    )
+                except TelegramError:
+                    pass
+
     except QuotaExceededError:
         # Re-raise to be handled by the worker
         if animation_task and not stop_animation_event.is_set():
             stop_animation_event.set()
             await animation_task
-            
+
         # Optional: Notify user specifically about the pause in this specific chat?
         # For now, we let the worker handle the global pause notification or re-queue logic.
         # But we validly want to update the "Processing..." message to "Paused" here?
@@ -321,9 +343,8 @@ async def url_processor_worker():
     """
     print("URL processor worker started.", flush=True)
     while True:
+        task_data = await url_queue.get()
         try:
-            # Get a URL processing task from the queue
-            task_data = await url_queue.get()
             (
                 chat_id,
                 url,
@@ -345,25 +366,27 @@ async def url_processor_worker():
                 summary_type=summary_type,
             )
         except QuotaExceededError:
-            print(f"⚠️ Quota Exceeded for {url}. Re-queuing and pausing worker...", flush=True)
-            
+            print(
+                f"⚠️ Quota Exceeded for {url}. Re-queuing and pausing worker...",
+                flush=True,
+            )
+
             # Notify the user that their request is delayed
             try:
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text="⏳ <b>API Quota Exceeded.</b>\nThe bot is pausing for 10 minutes to recover. Your request has been re-queued and will be processed automatically.",
                     reply_to_message_id=message.message_id,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             except Exception as e:
                 print(f"Could not notify user about delay: {e}")
 
             # Put the task back in the queue
             await url_queue.put(task_data)
-            url_queue.task_done() # Mark the failed attempt as done so join() doesn't hang, though we put it back
             # Wait 10 minutes
             await asyncio.sleep(600)
-            
+
         except Exception as e:
             print(f"Error in URL processor worker: {e}", flush=True)
         finally:
@@ -541,7 +564,11 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stop_animation_event.set()
             await animation_task
 
-            if not answer_data or "ERRORE:" in answer_data.get("summary", "") or "ERROR:" in answer_data.get("summary", ""):
+            if (
+                not answer_data
+                or "ERRORE:" in answer_data.get("summary", "")
+                or "ERROR:" in answer_data.get("summary", "")
+            ):
                 error_message = answer_data.get("summary", "An unknown error occurred.")
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
