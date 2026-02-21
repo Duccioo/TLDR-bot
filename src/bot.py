@@ -180,6 +180,10 @@ def main():
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)
         .post_init(post_init_hook)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .pool_timeout(30)
         .build()
     )
 
@@ -196,10 +200,6 @@ def main():
             drop_pending_updates=True,
             bootstrap_retries=-1,
             timeout=30,
-            read_timeout=30,
-            write_timeout=30,
-            connect_timeout=30,
-            pool_timeout=30,
         )
     except KeyboardInterrupt:
         print("\n✓ Bot stopped by user (Ctrl+C)")
