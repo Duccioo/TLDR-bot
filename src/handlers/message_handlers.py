@@ -80,6 +80,9 @@ async def animate_loading_message(
             if "Message to edit not found" in str(e):
                 print("Animation stopped: message not found.")
                 break
+            if "Flood control exceeded" in str(e):
+                print(f"Animation stopped: flood control exceeded.")
+                break
             if "Message is not modified" not in str(e):
                 print(f"Error during animation: {e}")
 
@@ -169,6 +172,9 @@ async def process_url(
                 retry_keyboard = get_retry_keyboard(
                     url, summary_type, use_web_search, use_url_context
                 )
+                if animation_task:
+                    stop_animation_event.set()
+                    await animation_task
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_message.message_id,
@@ -180,6 +186,9 @@ async def process_url(
 
             summary_text = summary_data.get("summary")
             if "ERRORE:" in summary_text or "ERROR:" in summary_text:
+                if animation_task:
+                    stop_animation_event.set()
+                    await animation_task
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_message.message_id,
@@ -353,6 +362,7 @@ async def url_processor_worker():
                 use_web_search,
                 use_url_context,
                 summary_type,
+                quota_notified,
             ) = task_data
 
             print(f"Processing URL from queue: {url}", flush=True)
@@ -371,20 +381,28 @@ async def url_processor_worker():
                 flush=True,
             )
 
-            # Notify the user that their request is delayed
-            try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⏳ <b>API Quota Exceeded.</b>\nThe bot is pausing for 10 minutes to recover. Your request has been re-queued and will be processed automatically.",
-                    reply_to_message_id=message.message_id,
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                print(f"Could not notify user about delay: {e}")
+            if not quota_notified:
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text="⏳ <b>API Quota Exceeded.</b>\nThe bot is pausing for 10 minutes to recover. Your request has been re-queued and will be processed automatically.",
+                        reply_to_message_id=message.message_id,
+                        parse_mode="HTML",
+                    )
+                except Exception as e:
+                    print(f"Could not notify user about delay: {e}")
 
-            # Put the task back in the queue
-            await url_queue.put(task_data)
-            # Wait 10 minutes
+            requeue_data = (
+                chat_id,
+                url,
+                context,
+                message,
+                use_web_search,
+                use_url_context,
+                summary_type,
+                True,
+            )
+            await url_queue.put(requeue_data)
             await asyncio.sleep(600)
 
         except Exception as e:
@@ -443,6 +461,7 @@ async def summarize_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         use_web_search,
         use_url_context,
         "one_paragraph_summary_V2",
+        False,
     )
     await url_queue.put(task_data)
     print(f"URL added to queue: {url}. Queue size: {url_queue.qsize()}", flush=True)
@@ -534,6 +553,8 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 1. Re-scrape the article
             article_content, _, error_details = await scrape_article(url)
             if not article_content:
+                stop_animation_event.set()
+                await animation_task
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_message.message_id,

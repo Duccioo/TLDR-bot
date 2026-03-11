@@ -173,7 +173,7 @@ async def generate_telegraph_page(update: Update, context: ContextTypes.DEFAULT_
             del context.user_data["articles"][article_id]
 
 
-from handlers.message_handlers import process_url
+from handlers.message_handlers import url_queue
 
 
 async def retry_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -186,38 +186,20 @@ async def retry_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         use_web_search = use_web_search_str.lower() == 'true'
         use_url_context = use_url_context_str.lower() == 'true'
 
-        # HACK: To keep the flow consistent, we're reusing the process_url function.
-        # We need to simulate a "message" object that process_url can use.
-        class MockMessage:
-            def __init__(self, text, chat_id):
-                self.text = text
-                self.chat_id = chat_id
-                self.message_id = query.message.message_id
-
-            async def reply_text(self, *args, **kwargs):
-                # Edit the existing message instead of sending a new one
-                return await context.bot.edit_message_text(
-                    chat_id=self.chat_id,
-                    message_id=self.message_id,
-                    *args,
-                    **kwargs
-                )
-
-        mock_message = MockMessage(url, query.message.chat_id)
-
-        # We also need to remove the "Retry" button from the message we're about to edit.
         await query.edit_message_reply_markup(reply_markup=None)
 
-        # Now, call the main processing function as if a new message with the URL was sent
-        await process_url(
+        task_data = (
             update.effective_chat.id,
             url,
             context,
-            mock_message,
+            query.message,
             use_web_search,
             use_url_context,
-            summary_type, # Pass the original summary type to be retried
+            summary_type,
+            False,
         )
+        await url_queue.put(task_data)
+        print(f"Retry queued for URL: {url}. Queue size: {url_queue.qsize()}", flush=True)
 
     except (ValueError, IndexError) as e:
         print(f"Error in retry_summary callback: {e}", flush=True)
