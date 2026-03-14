@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="TLDR-bot_logo.png" alt="TLDR Bot Logo" width="200"/>
+  <img src="assets/TLDR-bot_logo.png" alt="TLDR Bot Logo" width="200"/>
   
   # 🤖 TLDR Bot
 

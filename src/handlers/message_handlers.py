@@ -235,7 +235,7 @@ async def process_url(
 
             message_markdown = "\n\n".join(filter(None, message_sections))
             telegram_message = telegramify_markdown.markdownify(
-                message_markdown, normalize_whitespace=False
+                message_markdown
             )
 
             keyboard_buttons = [
@@ -601,7 +601,7 @@ async def handle_qna_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # 4. Send the answer
             formatted_answer = telegramify_markdown.markdownify(
-                answer_data["summary"], normalize_whitespace=False
+                answer_data["summary"]
             )
             await context.bot.edit_message_text(
                 chat_id=chat_id,
