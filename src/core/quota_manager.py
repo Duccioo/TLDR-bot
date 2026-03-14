@@ -49,6 +49,7 @@ def initialize_quota_file():
                 "requests_per_day": 20,
                 "usage_timestamps": [],
             },
+
             # Gemma 3 Models
             "gemma-3-12b": {
                 "requests_per_minute": 30,

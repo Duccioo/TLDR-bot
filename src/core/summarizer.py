@@ -157,7 +157,14 @@ def _call_gemini_api(
             }
 
         except Exception as e:
-            if "503" in str(e) and "UNAVAILABLE" in str(e):
+            err_str = str(e)
+            if "404" in err_str or "NOT_FOUND" in err_str or "not found" in err_str.lower():
+                print(f"--- ERROR: Model '{model_name}' not found. ---")
+                return {
+                    "summary": f"**ERROR:** Model `{model_name}` non trovato. Seleziona un modello valido con /settings.",
+                    "token_count": 0,
+                }
+            elif "503" in err_str and "UNAVAILABLE" in err_str:
                 if attempt < len(retry_delays):
                     delay = retry_delays[attempt]
                     print(f"--- ERROR 503 (Overloaded). Waiting {delay}s... ---")
@@ -166,11 +173,11 @@ def _call_gemini_api(
                 else:
                     print("--- ERROR 503 Final failure. ---")
                     return {
-                        "summary": f"**ERROR:** {e}",
+                        "summary": f"⚠️ Il modello <b>{model_name}</b> è attualmente sovraccarico. Riprova tra qualche minuto o cambia modello dalle impostazioni.",
                         "token_count": 0,
                         "needs_retry": True,
                     }
-            elif "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                 print(f"--- Quota Exceeded: {e} ---")
                 raise QuotaExceededError(f"Gemini quota exceeded: {e}")
             else:
